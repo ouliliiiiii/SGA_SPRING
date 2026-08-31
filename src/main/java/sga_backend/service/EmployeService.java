@@ -1,5 +1,6 @@
 package sga_backend.service;
 
+import java.io.ByteArrayOutputStream;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -7,6 +8,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
@@ -29,9 +39,12 @@ import sga_backend.repository.DirectionRepository;
 import sga_backend.repository.EnfantAgentRepository;
 import sga_backend.repository.FonctionRepository;
 import sga_backend.repository.LieuTravailRepository;
+import sga_backend.repository.PosteRepository;
 import sga_backend.repository.ProfilRepository;
 import sga_backend.repository.SoldeCongesRepository;
+import sga_backend.repository.UniteRepository;
 import sga_backend.repository.UtilisateurRepository;
+
 
 @Service
 public class EmployeService {
@@ -46,6 +59,11 @@ public class EmployeService {
     @Autowired private EnfantAgentRepository enfantAgentRepository;
     @Autowired private SoldeCongesRepository soldeCongesRepository;
     @Autowired private JavaMailSender mailSender;
+    @Autowired private UniteRepository uniteRepository;
+    @Autowired private PosteRepository posteRepository;
+   
+    @Value("${sga.app.url:http://192.168.159.1:4200}")
+    private String appUrl;
 
     @Value("${spring.mail.username}")
     private String emailExpediteur;
@@ -56,10 +74,14 @@ public class EmployeService {
     // CRÉER UN EMPLOYÉ
     // ============================================
     @Transactional
-    public Utilisateur creerEmploye(CreerEmployeRequest request) {
+         public Utilisateur creerEmploye(CreerEmployeRequest request) {
 
+        // ---- Vérifications d'unicité ----
         if (agentRepository.existsByMatricule(request.getMatricule())) {
             throw new RuntimeException("Ce matricule est déjà utilisé");
+        }
+        if (agentRepository.existsByEmail(request.getEmail())) {
+            throw new RuntimeException("Un employé avec cet email professionnel existe déjà");
         }
         if (utilisateurRepository.existsByLogin(request.getEmail())) {
             throw new RuntimeException("Un compte avec cet email existe déjà");
@@ -73,7 +95,6 @@ public class EmployeService {
         agent.setDateNaissance(request.getDateNaissance());
         agent.setEmail(request.getEmail());
         agent.setTelephone(request.getTelephone());
-        agent.setNoPoste(request.getNoPoste());
         agent.setEmailPersonnel(request.getEmailPersonnel());
         agent.setCni(request.getCni());
         agent.setDateEmbauche(request.getDateEmbauche());
@@ -83,20 +104,60 @@ public class EmployeService {
         agent.setSexe(request.getSexe() != null ? request.getSexe() : null);
         agent.setStatut(request.getStatut() != null ? request.getStatut() : "ACTIF");
         agent.setTypeContrat("CDI");
+        agent.setNumeroDePoste(request.getNumeroDePoste());
 
         int nbEnfants = (request.getEnfants() != null) ? request.getEnfants().size() : 0;
         agent.setNbEnfants(nbEnfants);
 
-        if (request.getIdEntite() != null)
-            lieuTravailRepository.findById(request.getIdEntite()).ifPresent(agent::setLieuTravail);
-        if (request.getIdDirection() != null)
-            directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+        // ---- Référentiels simples ----
         if (request.getIdFonction() != null)
             fonctionRepository.findById(request.getIdFonction()).ifPresent(agent::setFonction);
         if (request.getIdCategorieSocioPro() != null)
             categorieSocioProRepository.findById(request.getIdCategorieSocioPro()).ifPresent(agent::setCategorieSocioPro);
         if (request.getIdSuperieur() != null)
             agentRepository.findById(request.getIdSuperieur()).ifPresent(agent::setSuperieur);
+
+        // ---- Poste occupé (intitulé) ----
+        if (request.getIdPoste() != null) {
+            posteRepository.findById(request.getIdPoste()).ifPresent(agent::setPosteOccupe);
+        } else {
+            agent.setPosteOccupe(null);
+        }
+
+        // ---- Détermination unité + direction selon le profil ----
+        String codeProfilAgent = null;
+        if (request.getIdProfil() != null) {
+            codeProfilAgent = profilRepository.findById(request.getIdProfil())
+                .map(p -> p.getCode()).orElse(null);
+        }
+
+        boolean sansDivision = "DIRECTEUR".equals(codeProfilAgent)
+                            || "DG".equals(codeProfilAgent)
+                            || "SG".equals(codeProfilAgent)
+                            || "DAF".equals(codeProfilAgent);
+
+        if (sansDivision) {
+            // Directeur / DG / SG / DAF : pas de division, direction choisie directement
+            agent.setUnite(null);
+            if (request.getIdDirection() != null) {
+                directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+            } else {
+                agent.setDirection(null);
+            }
+        } else {
+            // Agent / chef division / CSR : unité gardée, direction déduite de l'unité
+            if (request.getIdUnite() != null) {
+                uniteRepository.findById(request.getIdUnite()).ifPresent(agent::setUnite);
+            }
+            if (agent.getUnite() != null && agent.getUnite().getDirection() != null) {
+                agent.setDirection(agent.getUnite().getDirection());
+            } else if (request.getIdDirection() != null) {
+                directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+            }
+        }
+
+        // ---- Vérifier l'unicité du responsable ----
+        verifierUniciteResponsable(codeProfilAgent, request.getIdUnite(), request.getIdDirection(), null);
 
         Agent agentSauvegarde = agentRepository.save(agent);
 
@@ -140,7 +201,7 @@ public class EmployeService {
     // MODIFIER UN EMPLOYÉ (agent + enfants + solde) — TRANSACTIONNEL
     // ============================================
     @Transactional
-    public AgentDTO modifierEmploye(Long id, CreerEmployeRequest request) {
+         public AgentDTO modifierEmploye(Long id, CreerEmployeRequest request) {
 
         Agent agent = agentRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("Agent introuvable"));
@@ -152,7 +213,7 @@ public class EmployeService {
         agent.setCni(request.getCni());
         agent.setSexe(request.getSexe());
         agent.setTelephone(request.getTelephone());
-        agent.setNoPoste(request.getNoPoste());
+        agent.setNumeroDePoste(request.getNumeroDePoste());
         agent.setEmailPersonnel(request.getEmailPersonnel());
         agent.setAdresse1(request.getAdresse1());
         agent.setAdresse2(request.getAdresse2());
@@ -160,11 +221,14 @@ public class EmployeService {
         agent.setDateEmbauche(request.getDateEmbauche());
         agent.setStatut(request.getStatut() != null ? request.getStatut() : "ACTIF");
 
-        // ---- 2) Référentiels ----
-        if (request.getIdEntite() != null)
-            lieuTravailRepository.findById(request.getIdEntite()).ifPresent(agent::setLieuTravail);
-        if (request.getIdDirection() != null)
-            directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+        // ---- Poste occupé (intitulé) ----
+        if (request.getIdPoste() != null) {
+            posteRepository.findById(request.getIdPoste()).ifPresent(agent::setPosteOccupe);
+        } else {
+            agent.setPosteOccupe(null);
+        }
+
+        // ---- 2) Référentiels simples ----
         if (request.getIdFonction() != null)
             fonctionRepository.findById(request.getIdFonction()).ifPresent(agent::setFonction);
         if (request.getIdCategorieSocioPro() != null)
@@ -172,7 +236,44 @@ public class EmployeService {
         if (request.getIdSuperieur() != null)
             agentRepository.findById(request.getIdSuperieur()).ifPresent(agent::setSuperieur);
 
-        // ---- 3) Profil (sur le compte utilisateur lié) ----
+        // ---- 3) Détermination unité + direction selon le profil ----
+        String codeProfilAgent = null;
+        if (request.getIdProfil() != null) {
+            codeProfilAgent = profilRepository.findById(request.getIdProfil())
+                .map(p -> p.getCode()).orElse(null);
+        }
+
+        boolean sansDivision = "DIRECTEUR".equals(codeProfilAgent)
+                            || "DG".equals(codeProfilAgent)
+                            || "SG".equals(codeProfilAgent)
+                            || "DAF".equals(codeProfilAgent);
+
+        if (sansDivision) {
+            // Directeur / DG / SG / DAF : pas de division, direction choisie directement
+            agent.setUnite(null);
+            if (request.getIdDirection() != null) {
+                directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+            } else {
+                agent.setDirection(null);
+            }
+        } else {
+            // Agent / chef division / CSR : unité gardée, direction déduite de l'unité
+            if (request.getIdUnite() != null) {
+                uniteRepository.findById(request.getIdUnite()).ifPresent(agent::setUnite);
+            } else {
+                agent.setUnite(null);
+            }
+            if (agent.getUnite() != null && agent.getUnite().getDirection() != null) {
+                agent.setDirection(agent.getUnite().getDirection());
+            } else if (request.getIdDirection() != null) {
+                directionRepository.findById(request.getIdDirection()).ifPresent(agent::setDirection);
+            }
+        }
+
+        // ---- Vérifier l'unicité du responsable (en excluant l'agent lui-même) ----
+        verifierUniciteResponsable(codeProfilAgent, request.getIdUnite(), request.getIdDirection(), id);
+
+        // ---- 4) Profil (sur le compte utilisateur lié) ----
         if (request.getIdProfil() != null) {
             utilisateurRepository.findByAgentId(id).ifPresent(u -> {
                 profilRepository.findById(request.getIdProfil()).ifPresent(u::setProfil);
@@ -180,17 +281,16 @@ public class EmployeService {
             });
         }
 
-        // ---- 4) Enfants : diff par id (update / create / delete) ----
+        // ---- 5) Enfants ----
         synchroniserEnfants(agent, request.getEnfants());
 
-        // ---- 5) Solde : upsert ----
+        // ---- 6) Solde ----
         if (request.getSolde() != null) {
             ajusterSolde(agent, request.getSolde());
         }
 
         agentRepository.save(agent);
 
-        // On renvoie le DTO complet rechargé
         return toDto(agentRepository.findByIdWithEnfants(id).orElse(agent));
     }
 
@@ -285,10 +385,12 @@ public class EmployeService {
             "Vos identifiants de connexion :\n" +
             "   Login        : " + email + "\n" +
             "   Mot de passe : " + motDePasse + "\n\n" +
+            "Vous pouvez vous connecter à l'application à l'adresse suivante :\n" +
+            "   " + appUrl + "\n\n" +
             "Nous vous recommandons de changer votre mot de passe dès votre première " +
             "connexion via la page Mon Profil.\n\n" +
-            "Cordialement,\n" +
-            "L'équipe administrative"
+            "Cordialement,\n" 
+       
         );
         mailSender.send(message);
     }
@@ -308,7 +410,9 @@ public class EmployeService {
         dto.setCni(agent.getCni());
         dto.setSexe(agent.getSexe());
         dto.setTelephone(agent.getTelephone());
-        dto.setNoPoste(agent.getNoPoste());
+       dto.setPoste(agent.getPosteOccupe() != null ? agent.getPosteOccupe().getLibelle() : null);
+        dto.setIdPoste(agent.getPosteOccupe() != null ? agent.getPosteOccupe().getId() : null);
+       dto.setNumeroDePoste(agent.getNumeroDePoste());
         dto.setEmailPersonnel(agent.getEmailPersonnel());
         dto.setEmail(agent.getEmail());
         dto.setAdresse1(agent.getAdresse1());
@@ -318,14 +422,7 @@ public class EmployeService {
         dto.setNbEnfants(agent.getNbEnfants());
 
         // Référentiels en IDs plats + libellés
-        if (agent.getLieuTravail() != null) {
-            dto.setIdLieuTravail(agent.getLieuTravail().getId());
-            dto.setLibelleLieuTravail(agent.getLieuTravail().getLibelle());
-        }
-        if (agent.getDirection() != null) {
-            dto.setIdDirection(agent.getDirection().getId());
-            dto.setLibelleDirection(agent.getDirection().getLibelle());
-        }
+
         if (agent.getFonction() != null) {
             dto.setIdFonction(agent.getFonction().getId());
             dto.setLibelleFonction(agent.getFonction().getLibelle());
@@ -338,44 +435,66 @@ public class EmployeService {
             dto.setIdSuperieur(agent.getSuperieur().getId());
             dto.setNomSuperieur(agent.getSuperieur().getNom() + " " + agent.getSuperieur().getPrenom());
         }
+// Direction : lue DIRECTEMENT sur l'agent (toujours remplie, même sans unité)
+if (agent.getDirection() != null) {
+    dto.setIdDirection(agent.getDirection().getId());
+    dto.setLibelleDirection(agent.getDirection().getLibelle());
+}
 
-        // Profil (depuis le compte utilisateur lié)
-        utilisateurRepository.findByAgentId(agent.getId()).ifPresent(u -> {
-            if (u.getProfil() != null) {
-                dto.setIdProfil(u.getProfil().getId());
-                dto.setLibelleProfil(u.getProfil().getLibelle());
-            }
-        });
+// Unité (division) : présente seulement pour les agents en division
+if (agent.getUnite() != null) {
+    dto.setIdUniteo(agent.getUnite().getId());
+    dto.setLibelleUniteo(agent.getUnite().getLibelle());
 
-        // Enfants (avec id pour l'update ciblé)
-        dto.setEnfants(
-            agent.getEnfants() != null
-            ? agent.getEnfants().stream().map(e -> {
-                EnfantAgentDTO enfant = new EnfantAgentDTO();
-                enfant.setId(e.getId());
-                enfant.setPrenom(e.getPrenom());
-                enfant.setDateNaissance(e.getDateNaissance());
-                return enfant;
-            }).toList()
-            : new ArrayList<>()
-        );
-
-        // Solde (peut être null)
-        soldeCongesRepository.findByAgentId(agent.getId()).ifPresent(s -> {
-            SoldeAjustementDTO sdto = new SoldeAjustementDTO();
-            sdto.setNbCongesAcquis(s.getNbCongesAcquis());
-            sdto.setNbCongesReliquat(s.getNbCongesReliquat());
-            sdto.setNbCongesSupplementaire(s.getNbCongesSupplementaire());
-            sdto.setNbJourSansSolde(s.getNbJourSansSolde());
-            sdto.setNbJourPrisDeductible(s.getNbJourPrisDeductible());
-            sdto.setNbCongesEncours(s.getNbCongesEncours());
-            sdto.setNbCongesEchus(s.getNbCongesEchus());
-            sdto.setDateDernierCalcul(s.getDateDernierCalcul());
-            dto.setSolde(sdto);
-        });
-
-        return dto;
+        if (agent.getUnite().getLieuTravail() != null) {
+        dto.setIdLieuTravail(agent.getUnite().getLieuTravail().getId());
+        dto.setLibelleLieuTravail(agent.getUnite().getLieuTravail().getLibelle());
+        if (agent.getUnite().getLieuTravail().getTypeEntite() != null) {
+            dto.setTypeLieuTravail(agent.getUnite().getLieuTravail().getTypeEntite().name());
+        }
+        }
     }
+            // Si le type n'a pas pu être déterminé (agent sans unité, ex. directeur), on le considère au Siège
+            if (dto.getTypeLieuTravail() == null) {
+                dto.setTypeLieuTravail("SIEGE");
+            }
+            // Profil (depuis le compte utilisateur lié)
+            utilisateurRepository.findByAgentId(agent.getId()).ifPresent(u -> {
+                if (u.getProfil() != null) {
+                    dto.setIdProfil(u.getProfil().getId());
+                    dto.setLibelleProfil(u.getProfil().getLibelle());
+                }
+            });
+
+            // Enfants (avec id pour l'update ciblé)
+            dto.setEnfants(
+                agent.getEnfants() != null
+                ? agent.getEnfants().stream().map(e -> {
+                    EnfantAgentDTO enfant = new EnfantAgentDTO();
+                    enfant.setId(e.getId());
+                    enfant.setPrenom(e.getPrenom());
+                    enfant.setDateNaissance(e.getDateNaissance());
+                    return enfant;
+                }).toList()
+                : new ArrayList<>()
+            );
+
+            // Solde (peut être null)
+            soldeCongesRepository.findByAgentId(agent.getId()).ifPresent(s -> {
+                SoldeAjustementDTO sdto = new SoldeAjustementDTO();
+                sdto.setNbCongesAcquis(s.getNbCongesAcquis());
+                sdto.setNbCongesReliquat(s.getNbCongesReliquat());
+                sdto.setNbCongesSupplementaire(s.getNbCongesSupplementaire());
+                sdto.setNbJourSansSolde(s.getNbJourSansSolde());
+                sdto.setNbJourPrisDeductible(s.getNbJourPrisDeductible());
+                sdto.setNbCongesEncours(s.getNbCongesEncours());
+                sdto.setNbCongesEchus(s.getNbCongesEchus());
+                sdto.setDateDernierCalcul(s.getDateDernierCalcul());
+                dto.setSolde(sdto);
+            });
+
+            return dto;
+        }
 
     public Agent getEmployeById(Long id) {
         return agentRepository.findById(id)
@@ -393,5 +512,151 @@ public class EmployeService {
             .stream()
             .map(this::toDto)
             .toList();
+    }
+    // ============================================================
+// Génère un fichier Excel (.xlsx) avec TOUTES les données des employés
+// ============================================================
+
+
+
+public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
+
+   List<Agent> agents;
+    if (ids != null && !ids.isEmpty()) {
+        agents = agentRepository.findAllById(ids);  // seulement les sélectionnés
+    } else {
+        agents = agentRepository.findAll();  // tous si aucune sélection
+    }
+
+    try (XSSFWorkbook workbook = new XSSFWorkbook();
+         ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+        Sheet sheet = workbook.createSheet("Employés");
+
+        // ===== Style de l'en-tête =====
+        CellStyle headerStyle = workbook.createCellStyle();
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setColor(IndexedColors.WHITE.getIndex());
+        headerStyle.setFont(headerFont);
+        headerStyle.setFillForegroundColor(IndexedColors.DARK_GREEN.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+
+        // ===== En-têtes de colonnes =====
+        String[] entetes = {
+            "Matricule", "Nom", "Prénom", "Date naissance", "Sexe", "CNI",
+            "Date embauche", "Type contrat", "Poste",
+            "Direction", "Division", "Lieu de travail", "Fonction", "Catégorie socio-pro",
+            "Statut", "Profil",
+            "Tél. personnel", "Email personnel", "Email pro (login)",
+            "Adresse 1", "Adresse 2", "Ville", "Nb enfants",
+            "Congés acquis", "Reliquat", "Jours pris", "En cours", "Échus"
+        };
+
+        Row ligneEntete = sheet.createRow(0);
+        for (int i = 0; i < entetes.length; i++) {
+            Cell cell = ligneEntete.createCell(i);
+            cell.setCellValue(entetes[i]);
+            cell.setCellStyle(headerStyle);
+        }
+
+        // ===== Données =====
+        int numLigne = 1;
+        for (Agent a : agents) {
+            Row row = sheet.createRow(numLigne++);
+            int c = 0;
+
+            row.createCell(c++).setCellValue(nz(a.getMatricule()));
+            row.createCell(c++).setCellValue(nz(a.getNom()));
+            row.createCell(c++).setCellValue(nz(a.getPrenom()));
+            row.createCell(c++).setCellValue(a.getDateNaissance() != null ? a.getDateNaissance().toString() : "");
+            row.createCell(c++).setCellValue(nz(a.getSexe()));
+            row.createCell(c++).setCellValue(nz(a.getCni()));
+            row.createCell(c++).setCellValue(a.getDateEmbauche() != null ? a.getDateEmbauche().toString() : "");
+            row.createCell(c++).setCellValue(nz(a.getTypeContrat()));
+            row.createCell(c++).setCellValue(nz(a.getNumeroDePoste()));
+
+            row.createCell(c++).setCellValue(a.getDirection() != null ? nz(a.getDirection().getLibelle()) : "");
+            row.createCell(c++).setCellValue(a.getUnite() != null ? nz(a.getUnite().getLibelle()) : "");
+String lieu = "";
+if (a.getUnite() != null && a.getUnite().getLieuTravail() != null) {
+    lieu = nz(a.getUnite().getLieuTravail().getLibelle());
+}
+row.createCell(c++).setCellValue(lieu);            row.createCell(c++).setCellValue(a.getFonction() != null ? nz(a.getFonction().getLibelle()) : "");
+            row.createCell(c++).setCellValue(a.getCategorieSocioPro() != null ? nz(a.getCategorieSocioPro().getLibelle()) : "");
+
+            row.createCell(c++).setCellValue(nz(a.getStatut()));
+
+            // Profil (via l'utilisateur lié)
+            Utilisateur u = utilisateurRepository.findByAgentId(a.getId()).orElse(null);
+            String profil = (u != null && u.getProfil() != null) ? u.getProfil().getLibelle() : "";
+            row.createCell(c++).setCellValue(profil);
+
+            row.createCell(c++).setCellValue(nz(a.getTelephone()));
+            row.createCell(c++).setCellValue(nz(a.getEmailPersonnel()));
+            row.createCell(c++).setCellValue(nz(a.getEmail()));
+            row.createCell(c++).setCellValue(nz(a.getAdresse1()));
+            row.createCell(c++).setCellValue(nz(a.getAdresse2()));
+            row.createCell(c++).setCellValue(nz(a.getVille()));
+            row.createCell(c++).setCellValue(a.getNbEnfants() != null ? a.getNbEnfants() : 0);
+
+            // Solde
+            SoldeConges s = soldeCongesRepository.findByAgentId(a.getId()).orElse(null);
+            row.createCell(c++).setCellValue(s != null && s.getNbCongesAcquis() != null ? s.getNbCongesAcquis().doubleValue() : 0);
+            row.createCell(c++).setCellValue(s != null && s.getNbCongesReliquat() != null ? s.getNbCongesReliquat().doubleValue() : 0);
+            row.createCell(c++).setCellValue(s != null && s.getNbJourPrisDeductible() != null ? s.getNbJourPrisDeductible().doubleValue() : 0);
+            row.createCell(c++).setCellValue(s != null && s.getNbCongesEncours() != null ? s.getNbCongesEncours().doubleValue() : 0);
+            row.createCell(c++).setCellValue(s != null && s.getNbCongesEchus() != null ? s.getNbCongesEchus().doubleValue() : 0);
+        }
+
+        // Ajuste la largeur des colonnes
+        for (int i = 0; i < entetes.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        workbook.write(out);
+        return out.toByteArray();
+    }
+}
+
+// Petit helper pour éviter les null
+private String nz(String s) {
+    return s != null ? s : "";
+}
+// Vérifie qu'on ne crée pas un 2e responsable sur une structure qui en a déjà un.
+    // idAgentExclu : null en création, l'id de l'agent en modification.
+    private void verifierUniciteResponsable(String codeProfil, Long idUnite, Long idDirection, Long idAgentExclu) {
+        if (codeProfil == null) return;
+
+        // CHEF_DIVISION : un seul par division
+        if ("CHEF_DIVISION".equalsIgnoreCase(codeProfil) && idUnite != null) {
+            if (agentRepository.compterParProfilEtUnite("CHEF_DIVISION", idUnite, idAgentExclu) > 0) {
+                throw new RuntimeException("Cette division a déjà un chef de division.");
+            }
+        }
+
+        // CSR : un seul par service régional (CSUR)
+        if ("CSR".equalsIgnoreCase(codeProfil) && idUnite != null) {
+            if (agentRepository.compterParProfilEtUnite("CSR", idUnite, idAgentExclu) > 0) {
+                throw new RuntimeException("Cette antenne régionale a déjà un chef de service régional.");
+            }
+        }
+
+        // DIRECTEUR : un seul par direction/cellule (couvre aussi les coordonnateurs de cellule)
+        if ("DIRECTEUR".equalsIgnoreCase(codeProfil) && idDirection != null) {
+            if (agentRepository.compterParProfilEtDirection("DIRECTEUR", idDirection, idAgentExclu) > 0) {
+                throw new RuntimeException("Cette direction/cellule a déjà un directeur (ou coordonnateur).");
+            }
+        }
+                // Rôles uniques au sommet : un seul DG, un seul SG, un seul DAFCH dans toute l'organisation
+        if ("DG".equalsIgnoreCase(codeProfil) || "SG".equalsIgnoreCase(codeProfil) || "DAF".equalsIgnoreCase(codeProfil)) {
+            if (agentRepository.compterParProfil(codeProfil, idAgentExclu) > 0) {
+                String role = "DG".equalsIgnoreCase(codeProfil) ? "Directeur Général"
+                            : "SG".equalsIgnoreCase(codeProfil) ? "Secrétaire Général"
+                            : "Directeur de l'Administration, des Finances et du Capital humain";
+                throw new RuntimeException("Il existe déjà un " + role + " dans l'organisation.");
+            }
+        }
     }
 }

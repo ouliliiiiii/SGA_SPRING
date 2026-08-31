@@ -28,7 +28,7 @@ public class CreerEmployeRequest {
 
     // CONTACTS
     private String telephone;
-    private String noPoste;
+    private String poste;
     private String emailPersonnel;
     private String email;
 
@@ -48,4 +48,12 @@ public class CreerEmployeRequest {
 
     // SOLDE (utilisé uniquement en modification, pour l'ajustement RH)
 private SoldeAjustementDTO solde;
+private Long idUnite;
+    private String numeroDePoste;
+    private Long idPoste;
+
+    public String getNumeroDePoste() { return numeroDePoste; }
+    public void setNumeroDePoste(String numeroDePoste) { this.numeroDePoste = numeroDePoste; }
+    public Long getIdPoste() { return idPoste; }
+    public void setIdPoste(Long idPoste) { this.idPoste = idPoste; }
 }

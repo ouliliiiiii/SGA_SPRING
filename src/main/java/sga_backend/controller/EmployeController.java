@@ -1,5 +1,5 @@
 package sga_backend.controller;
-
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import sga_backend.dto.AgentDTO;
 import sga_backend.dto.CreerEmployeRequest;
@@ -19,12 +21,15 @@ import sga_backend.dto.EnfantAgentDTO;
 import sga_backend.dto.UtilisateurResponse;
 import sga_backend.entity.Agent;
 import sga_backend.entity.EnfantAgent;
+import sga_backend.entity.Poste;
 import sga_backend.entity.Utilisateur;
 import sga_backend.repository.AgentRepository;
 import sga_backend.repository.EnfantAgentRepository;
+import sga_backend.repository.PosteRepository;
 import sga_backend.repository.SoldeCongesRepository;
 import sga_backend.repository.UtilisateurRepository;
 import sga_backend.service.EmployeService;
+import sga_backend.service.ImportEmployeService;
 
 @RestController
 @RequestMapping("/api/employes")
@@ -42,9 +47,10 @@ public class EmployeController {
     @PostMapping
     public ResponseEntity<?> creerEmploye(@RequestBody CreerEmployeRequest request) {
         try {
-          Utilisateur utilisateur = employeService.creerEmploye(request);
-         return ResponseEntity.ok(UtilisateurResponse.depuis(utilisateur));
-           
+            Utilisateur utilisateur = employeService.creerEmploye(request);
+            return ResponseEntity.ok(UtilisateurResponse.depuis(utilisateur));
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            return ResponseEntity.badRequest().body("Cette donnée existe déjà (email ou matricule en double).");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -166,5 +172,87 @@ public class EmployeController {
     @GetMapping("/agents")
     public List<AgentDTO> getAgents() {
         return employeService.getAllAgents();
+    }
+    // ============================================================
+// À AJOUTER dans EmployeController.java
+// GET /api/employes/export  -> télécharge un Excel avec TOUTES les données
+// ============================================================
+
+@PostMapping("/export")
+public ResponseEntity<byte[]> exporterEmployes(@RequestBody(required = false) List<Long> ids){
+    try {
+       byte[] fichier = employeService.genererExcelEmployes(ids);
+        return ResponseEntity.ok()
+            .header("Content-Disposition", "attachment; filename=employes.xlsx")
+            .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            .body(fichier);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body(null);
+    }
+}
+
+@Autowired private ImportEmployeService importEmployeService;
+ 
+@PostMapping("/import")
+public ResponseEntity<?> importerEmployes(@RequestParam("fichier") MultipartFile fichier) {
+    try {
+        if (fichier.isEmpty()) {
+            return ResponseEntity.badRequest().body("Fichier vide");
+        }
+        ImportEmployeService.ResultatImport resultat = importEmployeService.importer(fichier);
+        return ResponseEntity.ok(resultat);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body("Erreur lors de l'import : " + e.getMessage());
+    }
+}
+ @PostMapping("/import/colonnes")
+public ResponseEntity<?> lireColonnes(@RequestParam("fichier") MultipartFile fichier) {
+    try {
+        if (fichier.isEmpty()) {
+            return ResponseEntity.badRequest().body("Fichier vide");
+        }
+        return ResponseEntity.ok(importEmployeService.lireColonnes(fichier));
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body("Impossible de lire le fichier : " + e.getMessage());
+    }
+}
+        @PostMapping("/import/mapping")
+    public ResponseEntity<?> importerAvecMapping(
+            @RequestParam("fichier") MultipartFile fichier,
+            @RequestParam("mapping") String mappingStr) {
+        try {
+            if (fichier.isEmpty()) {
+                return ResponseEntity.badRequest().body("Fichier vide");
+            }
+            // Décoder le mapping "champ::colonne;;champ::colonne" sans Jackson
+            java.util.Map<String, String> mapping = new java.util.HashMap<>();
+            if (mappingStr != null && !mappingStr.isEmpty()) {
+                for (String paire : mappingStr.split(";;")) {
+                    String[] parts = paire.split("::", 2);
+                    if (parts.length == 2) {
+                        mapping.put(parts[0], parts[1]);
+                    }
+                }
+            }
+
+            ImportEmployeService.ResultatImport resultat =
+                importEmployeService.importerAvecMapping(fichier, mapping);
+            return ResponseEntity.ok(resultat);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Erreur lors de l'import : " + e.getMessage());
+        }
+    }
+        @Autowired private PosteRepository posteRepository;
+
+    @GetMapping("/postes/par-division/{idUnite}")
+    public ResponseEntity<?> getPostesParDivision(@PathVariable Long idUnite) {
+        List<Poste> postes = posteRepository.findByUniteId(idUnite);
+        List<Map<String, Object>> result = postes.stream().map(p -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("libelle", p.getLibelle());
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
     }
 }

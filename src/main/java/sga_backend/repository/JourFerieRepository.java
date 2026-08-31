@@ -8,7 +8,12 @@ import sga_backend.entity.JourFerie;
 
 public interface JourFerieRepository extends JpaRepository<JourFerie, Long> {
 
-    List<JourFerie> findByType(String type);
+    // Tous les jours fériés actifs
+    List<JourFerie> findByActifTrue();
 
-    boolean existsByNomAndType(String nom, String type);
+    // Par type (FIXE / MOBILE), actifs seulement
+    List<JourFerie> findByTypeAndActifTrue(String type);
+
+    // Archivés
+    List<JourFerie> findByActifFalse();
 }

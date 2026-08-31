@@ -62,4 +62,45 @@ public class TypeCongeService {
     public List<TypeConge> getTous() {
         return typeCongeRepository.findAll();
     }
+// Créer un type
+public TypeConge creer(TypeConge type) {
+    if (type.getActif() == null) type.setActif(true);
+    if (type.getJustificatifRequis() == null) type.setJustificatifRequis(false);
+    if (type.getReserveFemme() == null) type.setReserveFemme(false);
+    if (type.getCompteJoursOuvres() == null) type.setCompteJoursOuvres(true);
+    return typeCongeRepository.save(type);
+}
+
+// Modifier un type
+public TypeConge modifier(Long id, TypeConge data) {
+    TypeConge type = typeCongeRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Type de congé introuvable"));
+
+    type.setLibelle(data.getLibelle());
+    type.setCode(data.getCode());
+    type.setCategorie(data.getCategorie());
+    type.setJustificatifRequis(data.getJustificatifRequis() != null ? data.getJustificatifRequis() : false);
+    type.setDureeMaximale(data.getDureeMaximale());
+    type.setReserveFemme(data.getReserveFemme() != null ? data.getReserveFemme() : false);
+    type.setCompteJoursOuvres(data.getCompteJoursOuvres() != null ? data.getCompteJoursOuvres() : true);
+    if (data.getActif() != null) type.setActif(data.getActif());
+
+    return typeCongeRepository.save(type);
+}
+
+// Supprimer un type
+public TypeConge archiver(Long id) {
+    TypeConge type = typeCongeRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Type de congé introuvable"));
+    type.setActif(false);
+    return typeCongeRepository.save(type);
+}
+ 
+// Désarchiver un type (le rend à nouveau disponible)
+public TypeConge desarchiver(Long id) {
+    TypeConge type = typeCongeRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Type de congé introuvable"));
+    type.setActif(true);
+    return typeCongeRepository.save(type);
+}
 }

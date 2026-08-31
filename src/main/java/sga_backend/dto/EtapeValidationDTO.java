@@ -20,4 +20,5 @@ public class EtapeValidationDTO {
     private String nomValidateur;
     private LocalDateTime dateAction;
     private String commentaire;
+    private String libelleStructure;   // ex. "Réseaux" (unité ou direction ciblée)
 }

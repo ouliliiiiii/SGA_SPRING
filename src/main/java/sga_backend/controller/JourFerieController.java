@@ -4,16 +4,15 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import sga_backend.dto.JourFerieDTO;
+import sga_backend.entity.JourFerie;
 import sga_backend.service.JourFerieService;
 
 @RestController
@@ -22,31 +21,55 @@ public class JourFerieController {
 
     @Autowired private JourFerieService jourFerieService;
 
-    // GET /api/jours-feries  (tous, ou filtré par ?type=FIXE / MOBILE)
+    // GET /api/jours-feries — liste des actifs
     @GetMapping
-    public List<JourFerieDTO> getJoursFeries(@RequestParam(required = false) String type) {
-        if (type != null && !type.isBlank()) {
-            return jourFerieService.getParType(type);
-        }
-        return jourFerieService.getTous();
+    public List<JourFerie> getTous() {
+        return jourFerieService.getTousActifs();
     }
 
-    // POST /api/jours-feries  (ajouter un férié, surtout les mobiles)
+    // GET /api/jours-feries/archives
+    @GetMapping("/archives")
+    public List<JourFerie> getArchives() {
+        return jourFerieService.getArchives();
+    }
+
+    // POST /api/jours-feries
     @PostMapping
-    public ResponseEntity<?> ajouter(@RequestBody JourFerieDTO dto) {
+    public ResponseEntity<?> creer(@RequestBody JourFerie jf) {
         try {
-            return ResponseEntity.ok(jourFerieService.ajouter(dto));
+            return ResponseEntity.ok(jourFerieService.creer(jf));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // DELETE /api/jours-feries/{id}
-    @DeleteMapping("/{id}")
-    public ResponseEntity<?> supprimer(@PathVariable Long id) {
+    // PUT /api/jours-feries/{id}
+    @PutMapping("/{id}")
+    public ResponseEntity<?> modifier(@PathVariable Long id, @RequestBody JourFerie jf) {
         try {
-            jourFerieService.supprimer(id);
-            return ResponseEntity.ok("Jour férié supprimé");
+            return ResponseEntity.ok(jourFerieService.modifier(id, jf));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // PUT /api/jours-feries/{id}/archiver
+    @PutMapping("/{id}/archiver")
+    public ResponseEntity<?> archiver(@PathVariable Long id) {
+        try {
+            jourFerieService.archiver(id);
+            return ResponseEntity.ok("Jour férié archivé");
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // PUT /api/jours-feries/{id}/restaurer
+    @PutMapping("/{id}/restaurer")
+    public ResponseEntity<?> restaurer(@PathVariable Long id) {
+        try {
+            jourFerieService.restaurer(id);
+            return ResponseEntity.ok("Jour férié restauré");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

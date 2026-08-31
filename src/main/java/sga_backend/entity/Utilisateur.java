@@ -2,8 +2,11 @@ package sga_backend.entity;
 
 import java.time.LocalDateTime;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -41,12 +44,13 @@ public class Utilisateur {
     @Column(nullable = false, length = 255)
     private String motDePasse;
 
-    @OneToOne
-    @JoinColumn(name = "id_agent")
-    private Agent agent;
+   @OneToOne(fetch = FetchType.LAZY)
+@JoinColumn(name = "id_agent")
+private Agent agent;
 
-    @ManyToOne
+     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_profil")
+    @JsonIgnoreProperties("utilisateur")
     private Profil profil;
 
     // Code de réinitialisation du mot de passe (6 chiffres) et son expiration

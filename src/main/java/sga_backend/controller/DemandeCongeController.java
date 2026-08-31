@@ -130,6 +130,35 @@ public class DemandeCongeController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+// ============================================
+    // GET /api/demandes-conge/historique — toutes les demandes (admin)
+    // ============================================
+   @GetMapping("/historique/{idUtilisateur}")
+    public List<DemandeCongeDTO> getHistorique(@PathVariable Long idUtilisateur) {
+        return demandeCongeService.getHistorique(idUtilisateur);
+    }
 
+    // ============================================
+    // POST /api/demandes-conge/export — Excel de l'historique
+    // Corps : liste d'IDs (demandes filtrées côté frontend). Vide = tout exporter.
+    // ============================================
+    @PostMapping("/export")
+    public ResponseEntity<byte[]> exporterHistorique(@RequestBody(required = false) List<Long> ids) {
+        byte[] contenu = demandeCongeService.exportHistorique(ids);
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"historique_demandes.xlsx\"")
+            .body(contenu);
+    }
+        @PostMapping("/dashboard/export")
+    public ResponseEntity<byte[]> exporterDashboard(@RequestBody(required = false) List<Long> ids) {
+        byte[] fichier = demandeCongeService.exportDashboard(ids);
+        return ResponseEntity.ok()
+            .header("Content-Disposition", "attachment; filename=export_dashboard.xlsx")
+            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            .body(fichier);
+    }
     
 }

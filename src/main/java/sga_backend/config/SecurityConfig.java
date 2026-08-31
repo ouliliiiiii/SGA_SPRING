@@ -30,7 +30,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/referentiel/**", "/api/types-conge/**",      // <-- nouveau
                                               "/api/jours-feries/**",     // <-- nouveau
                                               "/api/demandes-conge/**",
-                                            "/api/soldes/**","/api/validation/**","/api/unites/**","/api/directions/**").permitAll()
+                                            "/api/soldes/**","/api/validation/**","/api/unites/**","/api/directions/**","/api/employes/**",
+                                            "/api/soldes/regularisation","/api/notifications/**"
+                                           ).permitAll()
 
                 // Toutes les autres routes nécessitent d'être connecté
                 .anyRequest().authenticated()
@@ -49,7 +51,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // On autorise UNIQUEMENT l'origine d'Angular en développement
-        configuration.setAllowedOrigins(List.of("http://localhost:4200"));
+        configuration.setAllowedOrigins(List.of(
+    "http://localhost:4200",
+    "http://192.168.159.1:4200"   
+));
 
         // On autorise les méthodes HTTP qu'Angular utilisera (GET, POST, PUT, DELETE...)
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

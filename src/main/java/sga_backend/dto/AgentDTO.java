@@ -20,7 +20,7 @@ public class AgentDTO {
 
     // CONTACTS
     private String telephone;
-    private String noPoste;
+    private String poste;
     private String emailPersonnel;
     private String email;            // email professionnel (login)
 
@@ -35,8 +35,10 @@ public class AgentDTO {
     // LOCALISATION / RÉFÉRENTIELS — exposés en IDs plats (évite les boucles de sérialisation JPA)
     private Long idLieuTravail;
     private String libelleLieuTravail;
-    private Long idDirection;
+   private Long idDirection;
     private String libelleDirection;
+     private Long idUniteo;
+    private String libelleUniteo;
     private Long idFonction;
     private String libelleFonction;
     private Long idCategorieSocioPro;
@@ -45,6 +47,7 @@ public class AgentDTO {
     private String nomSuperieur;
     private Long idProfil;
     private String libelleProfil;
+    private String typeLieuTravail;   // SIEGE ou REGIONAL
 
     // ENFANTS
     private List<EnfantAgentDTO> enfants;
@@ -52,4 +55,7 @@ public class AgentDTO {
 
     // SOLDE (peut être null si pas encore initialisé)
     private SoldeAjustementDTO solde;
+        private String numeroDePoste;
+    private Long idPoste;
+
 }

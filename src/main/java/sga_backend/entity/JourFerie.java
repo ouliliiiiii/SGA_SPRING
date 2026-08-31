@@ -19,18 +19,22 @@ public class JourFerie {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Nom du jour férié (ex. "Fête de l'Indépendance", "Tabaski")
+    // Nom affiché (ex. "Fête de l'Indépendance", "Tabaski")
     @Column(nullable = false, length = 100)
     private String nom;
 
-    // FIXE (même jour/mois chaque année) ou MOBILE (date précise une année donnée)
-    @Column(nullable = false, length = 10)
+    // Type : FIXE (même jour/mois chaque année) ou MOBILE (date qui change chaque année)
+    @Column(nullable = false, length = 15)
     private String type;
 
-    // Pour les FIXES : jour (1-31) et mois (1-12)
-    private Integer jour;
-    private Integer mois;
+    // ===== Pour les jours FIXES : jour + mois (l'année n'a pas d'importance) =====
+    private Integer jour;   // 1..31
+    private Integer mois;   // 1..12
 
-    // Pour les MOBILES : date complète
+    // ===== Pour les jours MOBILES : date complète (spécifique à une année) =====
     private LocalDate date;
+
+    // Actif ou archivé (même pattern que TypeConge)
+    @Column(nullable = false)
+    private Boolean actif = true;
 }

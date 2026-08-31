@@ -65,4 +65,7 @@ private Long idUniteAttendue;        // rempli pour l'étape CHEF_DIVISION
 
 @Column(name = "id_direction_attendue")
 private Long idDirectionAttendue;    // rempli pour l'étape DIRECTEUR
+
+@Column(name = "date_activation")
+    private LocalDateTime dateActivation;
 }

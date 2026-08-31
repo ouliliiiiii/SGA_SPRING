@@ -29,11 +29,9 @@ public class CircuitValidationService {
     @Autowired private UtilisateurRepository utilisateurRepository;
     @Autowired private SoldeCongesRepository soldeCongesRepository;
     @Autowired private SoldeCongesService soldeCongesService;
-
-    // ============================================================
-    // GÉNÉRATION DES ÉTAPES (couche 1) — avec ciblage par unité/direction
-    // SIEGE    : Chef de division -> Directeur -> ADMIN -> DAF
-    // REGIONAL : CSR -> SG -> ADMIN -> DAF
+    @Autowired private NotificationService notificationService;
+    @Autowired private EmailService emailService;
+    
     // ============================================================
     @Transactional
     public void genererEtapes(DemandeConge demande) {
@@ -49,27 +47,54 @@ public class CircuitValidationService {
         }
 
         // Unité et direction du demandeur (pour cibler les bonnes étapes)
+      // Unité et direction du demandeur (pour cibler les bonnes étapes)
+        // Unité : null pour un directeur. Direction : lue DIRECTEMENT sur l'agent (toujours remplie).
         Long idUniteAgent = agent.getUnite() != null ? agent.getUnite().getId() : null;
         Long idDirectionAgent = agent.getDirection() != null ? agent.getDirection().getId() : null;
-
         List<EtapeValidation> etapes = new ArrayList<>();
 
-        // ===== CAS SPÉCIAUX DU SOMMET =====
+      // ===== CAS SPÉCIAUX DU SOMMET =====
         if ("ADMIN".equalsIgnoreCase(codeProfilAgent)) {
-            etapes.add(creerEtape(demande, 1, "DAF", "Directeur Administratif et Financier", null, null));
+            // ADMIN → DAFCH
+            etapes.add(creerEtape(demande, 1, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
             etapeValidationRepository.saveAll(etapes);
             return;
         }
-        if ("DAF".equalsIgnoreCase(codeProfilAgent) || "SG".equalsIgnoreCase(codeProfilAgent)) {
+        if ("DG".equalsIgnoreCase(codeProfilAgent)) {
+            // DG → ADMIN → DAFCH
+            etapes.add(creerEtape(demande, 1, "ADMIN", "DCH", null, null));
+            etapes.add(creerEtape(demande, 2, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
+            etapeValidationRepository.saveAll(etapes);
+            return;
+        }
+        if ("DAF".equalsIgnoreCase(codeProfilAgent)) {
+            // DAFCH → SG → ADMIN
+            etapes.add(creerEtape(demande, 1, "SG", "Secrétaire Général", null, null));
+            etapes.add(creerEtape(demande, 2, "ADMIN", "DCH", null, null));
+            etapeValidationRepository.saveAll(etapes);
+            return;
+        }
+        if ("SG".equalsIgnoreCase(codeProfilAgent)) {
+            // SG → DG → ADMIN → DAFCH
             etapes.add(creerEtape(demande, 1, "DG", "Directeur Général", null, null));
+            etapes.add(creerEtape(demande, 2, "ADMIN", "DCH", null, null));
+            etapes.add(creerEtape(demande, 3, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
+            etapeValidationRepository.saveAll(etapes);
+            return;
+        }
+        if ("DIRECTEUR".equalsIgnoreCase(codeProfilAgent)) {
+            // Directeur (ou coordonnateur de cellule) → SG → ADMIN → DAFCH
+            etapes.add(creerEtape(demande, 1, "SG", "Secrétaire Général", null, null));
+            etapes.add(creerEtape(demande, 2, "ADMIN", "DCH", null, null));
+            etapes.add(creerEtape(demande, 3, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
             etapeValidationRepository.saveAll(etapes);
             return;
         }
 
         // ===== RÈGLE GÉNÉRALE PAR NIVEAU =====
         String typeLieu = "SIEGE";
-        if (agent.getLieuTravail() != null && agent.getLieuTravail().getTypeEntite() != null) {
-            typeLieu = agent.getLieuTravail().getTypeEntite().name().toUpperCase();
+        if ((agent.getUnite() != null ? agent.getUnite().getLieuTravail() : null) != null && (agent.getUnite().getLieuTravail().getTypeEntite() != null)) {
+            typeLieu = agent.getUnite().getLieuTravail().getTypeEntite().name().toUpperCase();
         }
 
         // Circuit : profil, libellé, niveau
@@ -77,13 +102,13 @@ public class CircuitValidationService {
         if ("REGIONAL".equals(typeLieu)) {
             circuit.add(new Object[]{"CSR",   "Chef de Service Régional", 50});
             circuit.add(new Object[]{"SG",    "Secrétaire Général",       80});
-            circuit.add(new Object[]{"ADMIN", "Administration",          100});
-            circuit.add(new Object[]{"DAF",   "Directeur Administratif et Financier", 85});
+            circuit.add(new Object[]{"ADMIN", "DCH",          100});
+            circuit.add(new Object[]{"DAF",   "Directeur de l'Administration, des Finances et du Capital humain", 85});
         } else {
             circuit.add(new Object[]{"CHEF_DIVISION", "Chef de Division", 50});
             circuit.add(new Object[]{"DIRECTEUR",     "Directeur",        60});
-            circuit.add(new Object[]{"ADMIN",         "Administration",  100});
-            circuit.add(new Object[]{"DAF",           "Directeur Administratif et Financier", 85});
+            circuit.add(new Object[]{"ADMIN",         "DCH",  100});
+            circuit.add(new Object[]{"DAF",           "Directeur de l'Administration, des Finances et du Capital humain", 85});
         }
 
         // On garde les étapes de niveau strictement supérieur à celui de l'agent
@@ -99,10 +124,15 @@ public class CircuitValidationService {
                 Long directionCible = null;
 
                 if ("CHEF_DIVISION".equals(profilEtape) || "CSR".equals(profilEtape)) {
-                    // Chef de division / CSR : cibler l'unité du demandeur
+                    // Chef de division / CSR : cibler l'unité du demandeur.
+                    // Si l'agent n'a PAS d'unité (rattaché directement à une cellule/direction),
+                    // on SAUTE cette étape : pas de chef de division à ce niveau.
+                    if (idUniteAgent == null) {
+                        continue;
+                    }
                     uniteCible = idUniteAgent;
                 } else if ("DIRECTEUR".equals(profilEtape)) {
-                    // Directeur : cibler la direction du demandeur
+                    // Directeur / Coordonnateur de cellule : cibler la direction (ou cellule) du demandeur
                     directionCible = idDirectionAgent;
                 }
                 // ADMIN, DAF, SG, DG : pas de ciblage (rôle global)
@@ -114,11 +144,10 @@ public class CircuitValidationService {
 
         // Garde-fou : si rien ne reste, on met DAF par défaut
         if (etapes.isEmpty()) {
-            etapes.add(creerEtape(demande, 1, "DAF", "Directeur Administratif et Financier", null, null));
+            etapes.add(creerEtape(demande, 1, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
         }
 
-        etapeValidationRepository.saveAll(etapes);
-    }
+        etapeValidationRepository.saveAll(etapes); }
 
     // creerEtape avec ciblage (unité / direction)
     private EtapeValidation creerEtape(DemandeConge demande, int ordre, String profil, String libelle,
@@ -131,6 +160,9 @@ public class CircuitValidationService {
         e.setStatut("EN_ATTENTE");
         e.setIdUniteAttendue(idUniteAttendue);
         e.setIdDirectionAttendue(idDirectionAttendue);
+        if (ordre == 1) {
+            e.setDateActivation(LocalDateTime.now());
+        }
         return e;
     }
 
@@ -154,6 +186,7 @@ public class CircuitValidationService {
             dto.setIdValidateur(e.getValidateur().getId());
             dto.setNomValidateur(e.getValidateur().getNom() + " " + e.getValidateur().getPrenom());
         }
+        
         dto.setDateAction(e.getDateAction());
         dto.setCommentaire(e.getCommentaire());
         return dto;
@@ -165,13 +198,13 @@ public class CircuitValidationService {
     //   - PLUS : ciblage unité/direction
     //   - PLUS : marque l'étape finale (dernière du circuit)
     // ============================================================
-    public List<DemandeAValiderDTO> getDemandesAValider(Long idUtilisateur) {
+       public List<DemandeAValiderDTO> getDemandesAValider(Long idUtilisateur) {
+                long debut = System.currentTimeMillis();
         Utilisateur user = utilisateurRepository.findById(idUtilisateur).orElse(null);
         if (user == null || user.getProfil() == null) return new ArrayList<>();
 
         String codeProfil = user.getProfil().getCode();
 
-        // Unité et direction de l'utilisateur connecté (via son agent)
         Long idUniteUser = null;
         Long idDirectionUser = null;
         if (user.getAgent() != null) {
@@ -183,7 +216,6 @@ public class CircuitValidationService {
             }
         }
 
-        // Profils que cet utilisateur peut traiter
         List<String> profilsTraitables = new ArrayList<>();
         profilsTraitables.add(codeProfil);
         if ("ADMIN".equalsIgnoreCase(codeProfil)) {
@@ -194,42 +226,48 @@ public class CircuitValidationService {
             .findByProfilAttenduInAndStatut(profilsTraitables, "EN_ATTENTE");
 
         List<DemandeAValiderDTO> resultat = new ArrayList<>();
-        for (EtapeValidation etape : etapes) {
-            // Ne garder que si c'est l'étape COURANTE
-            if (!estEtapeCourante(etape)) continue;
 
-            // ===== FILTRE DE CIBLAGE =====
+        for (EtapeValidation etape : etapes) {
+            DemandeConge d = etape.getDemande();
+
+            // Charger les étapes de CETTE demande UNE SEULE FOIS
+            List<EtapeValidation> toutesEtapes = etapeValidationRepository
+                .findByDemandeIdOrderByOrdreAsc(d.getId());
+
+            // Étape courante = première EN_ATTENTE
+            EtapeValidation courante = toutesEtapes.stream()
+                .filter(e -> "EN_ATTENTE".equals(e.getStatut()))
+                .findFirst().orElse(null);
+            if (courante == null || !courante.getId().equals(etape.getId())) {
+                continue; // pas l'étape courante
+            }
+
+            // Filtre de ciblage
             if (etape.getIdUniteAttendue() != null) {
-                if (idUniteUser == null || !idUniteUser.equals(etape.getIdUniteAttendue())) {
-                    continue; // pas le bon chef de division
-                }
+                if (idUniteUser == null || !idUniteUser.equals(etape.getIdUniteAttendue())) continue;
             }
             if (etape.getIdDirectionAttendue() != null) {
-                if (idDirectionUser == null || !idDirectionUser.equals(etape.getIdDirectionAttendue())) {
-                    continue; // pas le bon directeur
-                }
+                if (idDirectionUser == null || !idDirectionUser.equals(etape.getIdDirectionAttendue())) continue;
             }
 
-            DemandeConge d = etape.getDemande();
             DemandeAValiderDTO dto = new DemandeAValiderDTO();
             dto.setIdDemande(d.getId());
             dto.setIdEtape(etape.getId());
             dto.setLibelleEtape(etape.getLibelle());
 
-           if (d.getAgent() != null) {
-    dto.setIdAgent(d.getAgent().getId());
-    dto.setNomAgent(d.getAgent().getNom());
-    dto.setPrenomAgent(d.getAgent().getPrenom());
-    dto.setMatriculeAgent(d.getAgent().getMatricule());
-    if (d.getAgent().getFonction() != null) {
-        dto.setFonctionAgent(d.getAgent().getFonction().getLibelle());
-    }
-    // Profil du demandeur (via son utilisateur)
-    Utilisateur uAgent = utilisateurRepository.findByAgentId(d.getAgent().getId()).orElse(null);
-    if (uAgent != null && uAgent.getProfil() != null) {
-        dto.setProfilAgent(uAgent.getProfil().getLibelle());
-    }
-}
+            if (d.getAgent() != null) {
+                dto.setIdAgent(d.getAgent().getId());
+                dto.setNomAgent(d.getAgent().getNom());
+                dto.setPrenomAgent(d.getAgent().getPrenom());
+                dto.setMatriculeAgent(d.getAgent().getMatricule());
+                if (d.getAgent().getFonction() != null) {
+                    dto.setFonctionAgent(d.getAgent().getFonction().getLibelle());
+                }
+                Utilisateur uAgent = utilisateurRepository.findByAgentId(d.getAgent().getId()).orElse(null);
+                if (uAgent != null && uAgent.getProfil() != null) {
+                    dto.setProfilAgent(uAgent.getProfil().getLibelle());
+                }
+            }
             if (d.getTypeConge() != null) {
                 dto.setLibelleTypeConge(d.getTypeConge().getLibelle());
                 dto.setCategorieConge(d.getTypeConge().getCategorie());
@@ -241,17 +279,15 @@ public class CircuitValidationService {
             dto.setStatut(d.getStatut());
             dto.setDateCreation(d.getDateCreation());
 
-            // ===== ÉTAPE FINALE ? (dernière du circuit = ordre le plus élevé) =====
-            List<EtapeValidation> toutesEtapes = etapeValidationRepository
-                .findByDemandeIdOrderByOrdreAsc(etape.getDemande().getId());
+            // Ordre max (réutilise toutesEtapes déjà chargées)
             int ordreMax = toutesEtapes.stream()
                 .mapToInt(EtapeValidation::getOrdre)
-                .max()
-                .orElse(etape.getOrdre());
+                .max().orElse(etape.getOrdre());
             dto.setEtapeFinale(etape.getOrdre() == ordreMax);
 
             resultat.add(dto);
         }
+        System.out.println(">>> getDemandesAValider a pris : " + (System.currentTimeMillis() - debut) + " ms");
         return resultat;
     }
 
@@ -269,7 +305,7 @@ public class CircuitValidationService {
     // VALIDER UNE ÉTAPE (couche 2)
     // ============================================================
     @Transactional
-    public void valider(Long idEtape, Long idValidateur, String commentaire) {
+   public void valider(Long idEtape, Long idValidateur, String commentaire) {
         EtapeValidation etape = etapeValidationRepository.findById(idEtape)
             .orElseThrow(() -> new RuntimeException("Étape introuvable"));
 
@@ -290,6 +326,8 @@ public class CircuitValidationService {
         etapeValidationRepository.save(etape);
 
         DemandeConge demande = etape.getDemande();
+        Agent agentDemandeur = demande.getAgent();
+        Utilisateur userDemandeur = utilisateurRepository.findByAgentId(agentDemandeur.getId()).orElse(null);
 
         List<EtapeValidation> toutes = etapeValidationRepository.findByDemandeIdOrderByOrdreAsc(demande.getId());
         EtapeValidation suivante = toutes.stream()
@@ -297,15 +335,100 @@ public class CircuitValidationService {
             .findFirst().orElse(null);
 
         if (suivante != null) {
+            // Activer l'étape suivante (départ de son chrono pour l'escalade)
+            suivante.setDateActivation(LocalDateTime.now());
+            etapeValidationRepository.save(suivante);
+
             demande.setStatut("EN_COURS");
             demandeCongeRepository.save(demande);
+
+            // Notifier le demandeur que sa demande avance
+            if (userDemandeur != null) {
+                String msg = "Votre demande de congé a été validée par " + validateur.getPrenom() + " " + validateur.getNom()
+                           + " et passe à l'étape suivante.";
+                notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_AVANCE", demande.getId());
+                if (agentDemandeur.getEmail() != null) {
+                    emailService.envoyer(agentDemandeur.getEmail(),
+                        "Votre demande de congé avance",
+                        "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
+                        + "Votre demande de congé a été validée à une étape par "
+                        + validateur.getPrenom() + " " + validateur.getNom() + ".\n"
+                        + detailsDemande(demande) + "\n\n"
+                        + "Elle est maintenant transmise au validateur suivant.\n\nSGA - SEN-CSU");
+                }
+            }
+
+            // Notifier le validateur suivant
+            Utilisateur validateurSuivant = trouverValidateurDeLEtape(suivante);
+            if (validateurSuivant != null && validateurSuivant.getAgent() != null) {
+                String msg = "Une demande de congé de " + agentDemandeur.getPrenom() + " " + agentDemandeur.getNom()
+                           + " attend votre validation.";
+                notificationService.creer(validateurSuivant.getId(), msg, "DEMANDE_A_VALIDER", demande.getId());
+                if (validateurSuivant.getAgent().getEmail() != null) {
+                    emailService.envoyer(validateurSuivant.getAgent().getEmail(),
+                        "Une demande de congé attend votre validation",
+                        "Bonjour " + validateurSuivant.getAgent().getPrenom() + ",\n\n"
+                        + "Une demande de congé de " + agentDemandeur.getPrenom() + " " + agentDemandeur.getNom()
+                        + " attend votre validation.\n"
+                        + detailsDemande(demande) + "\n\n"
+                        + "Merci de la traiter dans l'application SGA.\n\nSGA - SEN-CSU");
+                }
+            }
+
         } else {
             demande.setStatut("VALIDEE");
             demandeCongeRepository.save(demande);
             decrementerSolde(demande);
+
+            // Notifier le demandeur : demande approuvée définitivement
+            if (userDemandeur != null) {
+                String msg = "Votre demande de congé a été approuvée définitivement.";
+                notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_VALIDEE", demande.getId());
+                if (agentDemandeur.getEmail() != null) {
+                    emailService.envoyer(agentDemandeur.getEmail(),
+                        "Votre demande de congé est approuvée",
+                        "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
+                        + "Bonne nouvelle : votre demande de congé a été approuvée définitivement.\n"
+                        + detailsDemande(demande) + "\n\n"
+                        + "Les jours ont été déduits de votre solde.\n\nSGA - SEN-CSU");
+                }
+            }
         }
     }
+    // Retrouve l'utilisateur qui doit traiter une étape (selon profil + ciblage unité/direction)
+    private Utilisateur trouverValidateurDeLEtape(EtapeValidation etape) {
+        List<Utilisateur> candidats = utilisateurRepository.findAll();
+        for (Utilisateur u : candidats) {
+            if (u.getProfil() == null || u.getAgent() == null) continue;
+            if (!etape.getProfilAttendu().equalsIgnoreCase(u.getProfil().getCode())) continue;
 
+            // Ciblage unité
+            if (etape.getIdUniteAttendue() != null) {
+                if (u.getAgent().getUnite() != null
+                    && etape.getIdUniteAttendue().equals(u.getAgent().getUnite().getId())) {
+                    return u;
+                }
+                continue;
+            }
+            // Ciblage direction
+            if (etape.getIdDirectionAttendue() != null) {
+                if (u.getAgent().getDirection() != null
+                    && etape.getIdDirectionAttendue().equals(u.getAgent().getDirection().getId())) {
+                    return u;
+                }
+                continue;
+            }
+            // Rôle global (ADMIN, DAF, DG, SG) : premier trouvé
+            return u;
+        }
+        return null;
+    }
+
+    // Petit utilitaire de mise en forme des dates d'une demande
+    private String detailsDemande(DemandeConge d) {
+        return "Période : " + d.getDateDebut() + " au " + d.getDateFin()
+             + " (" + d.getNombreJours() + " jour(s))";
+    }
     // ============================================================
     // REFUSER UNE ÉTAPE (couche 2)
     // ============================================================
@@ -337,6 +460,24 @@ public class CircuitValidationService {
         DemandeConge demande = etape.getDemande();
         demande.setStatut("REFUSEE");
         demandeCongeRepository.save(demande);
+
+        // Notifier le demandeur du refus avec le motif
+        Agent agentDemandeur = demande.getAgent();
+        Utilisateur userDemandeur = utilisateurRepository.findByAgentId(agentDemandeur.getId()).orElse(null);
+        if (userDemandeur != null) {
+            String msg = "Votre demande de congé a été refusée par " + validateur.getPrenom() + " " + validateur.getNom()
+                       + ". Motif : " + commentaire;
+            notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_REFUSEE", demande.getId());
+            if (agentDemandeur.getEmail() != null) {
+                emailService.envoyer(agentDemandeur.getEmail(),
+                    "Votre demande de congé a été refusée",
+                    "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
+                    + "Votre demande de congé a été refusée par "
+                    + validateur.getPrenom() + " " + validateur.getNom() + ".\n"
+                    + detailsDemande(demande) + "\n\n"
+                    + "Motif du refus : " + commentaire + "\n\nSGA - SEN-CSU");
+            }
+        }
     }
 
     // Vérifie que l'étape est bien la première EN_ATTENTE (on ne saute pas d'étape)
@@ -371,10 +512,12 @@ public class CircuitValidationService {
         // ===== VÉRIFICATION DU CIBLAGE =====
         Long idUniteUser = null;
         Long idDirectionUser = null;
-        if (validateur.getAgent() != null) {
+       if (validateur.getAgent() != null) {
+            // Unité : null pour un directeur
             if (validateur.getAgent().getUnite() != null) {
                 idUniteUser = validateur.getAgent().getUnite().getId();
             }
+            // Direction : lue DIRECTEMENT sur l'agent (jamais via l'unité)
             if (validateur.getAgent().getDirection() != null) {
                 idDirectionUser = validateur.getAgent().getDirection().getId();
             }

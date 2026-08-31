@@ -18,10 +18,13 @@ public class UtilisateurResponse {
     private Long idAgent;
     private Long idDirection;
     private String libelleDirection;
+    private Long idUnite;
+    private String libelleUnite;   // ex. "Division Réseaux et Supports"
 
     public UtilisateurResponse(Long id, String nom, String prenom, String login,
                                String statut, String codeProfil, String libelleProfil,
-                               Long idAgent, Long idDirection, String libelleDirection) {
+                               Long idAgent, Long idDirection, String libelleDirection,
+                               Long idUnite, String libelleUnite) {
         this.id = id;
         this.nom = nom;
         this.prenom = prenom;
@@ -32,6 +35,8 @@ public class UtilisateurResponse {
         this.idAgent = idAgent;
         this.idDirection = idDirection;
         this.libelleDirection = libelleDirection;
+        this.idUnite = idUnite;
+        this.libelleUnite = libelleUnite;
     }
 
     // ============================================================
@@ -44,12 +49,18 @@ public class UtilisateurResponse {
         Long idAgent = null;
         Long idDirection = null;
         String libelleDirection = null;
+        Long idUnite = null;
+        String libelleUnite = null;
 
         if (u.getAgent() != null) {
             idAgent = u.getAgent().getId();
             if (u.getAgent().getDirection() != null) {
                 idDirection = u.getAgent().getDirection().getId();
                 libelleDirection = u.getAgent().getDirection().getLibelle();
+            }
+            if (u.getAgent().getUnite() != null) {
+                idUnite = u.getAgent().getUnite().getId();
+                libelleUnite = u.getAgent().getUnite().getLibelle();
             }
         }
 
@@ -63,7 +74,9 @@ public class UtilisateurResponse {
             libelleProfil,
             idAgent,
             idDirection,
-            libelleDirection
+            libelleDirection,
+            idUnite,
+            libelleUnite
         );
     }
 }

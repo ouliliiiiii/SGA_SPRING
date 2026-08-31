@@ -8,6 +8,7 @@ import lombok.Data;
 
 @Data
 public class DemandeCongeDTO {
+  private String uniteEtapeCourante;   // ex. "Division Réseaux et Supports"
     private Long id;
 
     private Long idAgent;
@@ -33,4 +34,19 @@ public class DemandeCongeDTO {
     private String justificatif;
     private String statut;
     private LocalDateTime dateCreation;
+
+      // ===== Étape courante (« chez qui est la demande ») — page Historique =====
+    // Renseignés uniquement pour une demande encore en cours (EN_ATTENTE / EN_COURS).
+    private String libelleEtapeCourante;    // ex. « Chef de Division »
+    private String profilAttenduCourant;    // ex. « CHEF_DIVISION »
+    private Integer ordreEtapeCourante;      // position dans le circuit
+    private String nomValidateurAttendu;    // nom du validateur si déjà connu (souvent null tant qu'en attente)
+
+    // ===== Champs agent pour le tableau de bord (filtres sexe / direction / division) =====
+    private String sexeAgent;          // "M" / "F"
+    private String directionAgent;     // libellé de la direction
+    private String divisionAgent;      // libellé de l'unité/division
+    private String profilAgent;
+    private String posteAgent;
+    private String typeLieuAgent;   // SIEGE ou REGIONAL
 }

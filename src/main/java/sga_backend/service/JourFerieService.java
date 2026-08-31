@@ -1,14 +1,12 @@
 package sga_backend.service;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
-import sga_backend.dto.JourFerieDTO;
 import sga_backend.entity.JourFerie;
 import sga_backend.repository.JourFerieRepository;
 
@@ -17,98 +15,93 @@ public class JourFerieService {
 
     @Autowired private JourFerieRepository jourFerieRepository;
 
-    // ============================================
-    // PRÉ-REMPLISSAGE des fériés FIXES sénégalais
-    // S'exécute au démarrage ; n'insère que ce qui manque (idempotent)
-    // ============================================
-    @PostConstruct
-    public void initialiserFeriesFixes() {
-        creerSiAbsent("Jour de l'An", 1, 1);
-        creerSiAbsent("Fête de l'Indépendance", 4, 4);
-        creerSiAbsent("Fête du Travail", 1, 5);
-        creerSiAbsent("Assomption", 15, 8);
-        creerSiAbsent("Toussaint", 1, 11);
-        creerSiAbsent("Noël", 25, 12);
+    // Liste des jours fériés actifs
+    public List<JourFerie> getTousActifs() {
+        return jourFerieRepository.findByActifTrue();
     }
 
-    private void creerSiAbsent(String nom, int jour, int mois) {
-        if (!jourFerieRepository.existsByNomAndType(nom, "FIXE")) {
-            JourFerie jf = new JourFerie();
-            jf.setNom(nom);
-            jf.setType("FIXE");
-            jf.setJour(jour);
-            jf.setMois(mois);
-            jourFerieRepository.save(jf);
+    // Liste des archivés
+    public List<JourFerie> getArchives() {
+        return jourFerieRepository.findByActifFalse();
+    }
+
+    @Transactional
+    public JourFerie creer(JourFerie jf) {
+        jf.setActif(true);
+        valider(jf);
+        return jourFerieRepository.save(jf);
+    }
+
+    @Transactional
+    public JourFerie modifier(Long id, JourFerie data) {
+        JourFerie jf = jourFerieRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Jour férié introuvable"));
+        jf.setNom(data.getNom());
+        jf.setType(data.getType());
+        jf.setJour(data.getJour());
+        jf.setMois(data.getMois());
+        jf.setDate(data.getDate());
+        valider(jf);
+        return jourFerieRepository.save(jf);
+    }
+
+    @Transactional
+    public void archiver(Long id) {
+        JourFerie jf = jourFerieRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Jour férié introuvable"));
+        jf.setActif(false);
+        jourFerieRepository.save(jf);
+    }
+
+    @Transactional
+    public void restaurer(Long id) {
+        JourFerie jf = jourFerieRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Jour férié introuvable"));
+        jf.setActif(true);
+        jourFerieRepository.save(jf);
+    }
+
+    // Validation cohérence FIXE / MOBILE
+    private void valider(JourFerie jf) {
+        if (jf.getNom() == null || jf.getNom().isBlank()) {
+            throw new RuntimeException("Le nom est obligatoire");
+        }
+        if ("FIXE".equalsIgnoreCase(jf.getType())) {
+            if (jf.getJour() == null || jf.getMois() == null) {
+                throw new RuntimeException("Un jour fixe nécessite un jour et un mois");
+            }
+            if (jf.getMois() < 1 || jf.getMois() > 12 || jf.getJour() < 1 || jf.getJour() > 31) {
+                throw new RuntimeException("Jour ou mois invalide");
+            }
+            jf.setDate(null); // on n'utilise pas la date pour un fixe
+        } else if ("MOBILE".equalsIgnoreCase(jf.getType())) {
+            if (jf.getDate() == null) {
+                throw new RuntimeException("Un jour mobile nécessite une date complète");
+            }
+            jf.setJour(null);
+            jf.setMois(null);
+        } else {
+            throw new RuntimeException("Type invalide (attendu : FIXE ou MOBILE)");
         }
     }
 
-    // ============================================
-    // CRUD
-    // ============================================
-    public List<JourFerieDTO> getTous() {
-        List<JourFerieDTO> liste = new ArrayList<>();
-        for (JourFerie jf : jourFerieRepository.findAll()) {
-            liste.add(toDto(jf));
-        }
-        return liste;
-    }
-
-    public List<JourFerieDTO> getParType(String type) {
-        List<JourFerieDTO> liste = new ArrayList<>();
-        for (JourFerie jf : jourFerieRepository.findByType(type)) {
-            liste.add(toDto(jf));
-        }
-        return liste;
-    }
-
-    public JourFerieDTO ajouter(JourFerieDTO dto) {
-        JourFerie jf = new JourFerie();
-        jf.setNom(dto.getNom());
-        jf.setType(dto.getType());
-        jf.setJour(dto.getJour());
-        jf.setMois(dto.getMois());
-        jf.setDate(dto.getDate());
-        return toDto(jourFerieRepository.save(jf));
-    }
-
-    public void supprimer(Long id) {
-        jourFerieRepository.deleteById(id);
-    }
-
-    // ============================================
-    // UTILITAIRE : une date est-elle fériée ?
-    // (utilisé par le calcul des congés)
-    // ============================================
-    public boolean estFerie(LocalDate date) {
-        for (JourFerie jf : jourFerieRepository.findAll()) {
+    // ============================================================
+    // Utilisé par le calcul des congés : ce jour est-il férié ?
+    // ============================================================
+    public boolean estFerie(LocalDate jour) {
+        for (JourFerie jf : jourFerieRepository.findByActifTrue()) {
             if ("FIXE".equalsIgnoreCase(jf.getType())) {
                 if (jf.getJour() != null && jf.getMois() != null
-                    && date.getDayOfMonth() == jf.getJour()
-                    && date.getMonthValue() == jf.getMois()) {
+                    && jour.getDayOfMonth() == jf.getJour()
+                    && jour.getMonthValue() == jf.getMois()) {
                     return true;
                 }
             } else if ("MOBILE".equalsIgnoreCase(jf.getType())) {
-                if (jf.getDate() != null && jf.getDate().isEqual(date)) {
+                if (jf.getDate() != null && jour.isEqual(jf.getDate())) {
                     return true;
                 }
             }
         }
         return false;
-    }
-
-    // Renvoie la liste des dates fériées (utile pour passer au calcul en une fois)
-    public List<JourFerie> tousLesFeries() {
-        return jourFerieRepository.findAll();
-    }
-
-    private JourFerieDTO toDto(JourFerie jf) {
-        JourFerieDTO dto = new JourFerieDTO();
-        dto.setId(jf.getId());
-        dto.setNom(jf.getNom());
-        dto.setType(jf.getType());
-        dto.setJour(jf.getJour());
-        dto.setMois(jf.getMois());
-        dto.setDate(jf.getDate());
-        return dto;
     }
 }

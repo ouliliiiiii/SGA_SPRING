@@ -55,11 +55,9 @@ public class Agent {
     @Column(name = "email_personnel", length = 150)
     private String emailPersonnel;
 
-    @Column(name = "no_poste", length = 30)
-    private String noPoste;
 
-    @Column(length = 150)
-    private String poste;
+   @Column(name = "numero_de_poste")
+private String numeroDePoste;
 
     @Column(name = "type_contrat", length = 20, nullable = false)
     private String typeContrat = "CDI";
@@ -71,28 +69,19 @@ public class Agent {
     private LocalDate dateFinContrat;
 
     // LOCALISATION
-    @ManyToOne
-    @JoinColumn(name = "id_entite")
-    @JsonIgnoreProperties({"agents", "lieuTravailParent"})
-    private LieuTravail lieuTravail;
-
-    @ManyToOne
-    @JoinColumn(name = "id_direction")
-    @JsonIgnoreProperties("agents")
-    private Direction direction;
-
-    @ManyToOne
+   
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_fonction")
     @JsonIgnoreProperties("agents")
     private Fonction fonction;
 
-    @ManyToOne
+   @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_categorie_socio_pro")
     @JsonIgnoreProperties("agents")
     private CategorieSocioPro categorieSocioPro;
 
     // Supérieur hiérarchique (auto-référence)
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_superieur")
     @JsonIgnoreProperties({"superieur", "agent"})
     private Agent superieur;
@@ -122,8 +111,18 @@ public class Agent {
     @OneToMany(mappedBy = "agent", fetch = FetchType.LAZY)
     private List<EnfantAgent> enfants;
 
-    @ManyToOne
-@JoinColumn(name = "id_unite")
-@JsonIgnoreProperties("agents")
-private UniteOrganisationnelle unite;
+   @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_unite")
+    @JsonIgnoreProperties("agents")
+    private UniteOrganisationnelle unite;
+   @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_direction")
+    @JsonIgnoreProperties("agents")
+    private Direction direction;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_poste")
+    private Poste posteOccupe;
+
+
 }

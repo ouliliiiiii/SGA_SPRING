@@ -16,4 +16,6 @@ public interface EtapeValidationRepository extends JpaRepository<EtapeValidation
 
     // Les étapes en attente pour plusieurs profils (ex. ADMIN voit ADMIN + DAF)
     List<EtapeValidation> findByProfilAttenduInAndStatut(List<String> profils, String statut);
+
+        List<EtapeValidation> findByStatut(String statut);
 }

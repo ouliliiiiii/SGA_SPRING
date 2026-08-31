@@ -45,6 +45,10 @@ public class DirectionService {
         Direction d = new Direction();
         d.setCode(req.getCode().trim());
         d.setLibelle(req.getLibelle().trim());
+        // type : CELLULE ou DIRECTION (par défaut DIRECTION)
+        d.setType(req.getType() != null && !req.getType().trim().isEmpty()
+            ? req.getType().trim() : "DIRECTION");
+        d.setIdParent(req.getIdParent());
         d.setActif(true);
         return toDto(directionRepository.save(d));
     }
@@ -63,6 +67,11 @@ public class DirectionService {
                 throw new RuntimeException("Ce code de direction existe déjà");
             d.setCode(req.getCode().trim());
         }
+        if (req.getType() != null && !req.getType().trim().isEmpty()) {
+            d.setType(req.getType().trim());
+        }
+        // idParent : on autorise la mise à jour (y compris à null)
+        d.setIdParent(req.getIdParent());
         return toDto(directionRepository.save(d));
     }
 
@@ -87,7 +96,15 @@ public class DirectionService {
         dto.setId(d.getId());
         dto.setCode(d.getCode());
         dto.setLibelle(d.getLibelle());
+        dto.setType(d.getType());
+        dto.setIdParent(d.getIdParent());
         dto.setActif(d.getActif());
+
+        // Libellé du parent (pour afficher "rattachée à ...")
+        if (d.getIdParent() != null) {
+            directionRepository.findById(d.getIdParent())
+                .ifPresent(parent -> dto.setLibelleParent(parent.getLibelle()));
+        }
         return dto;
     }
 }

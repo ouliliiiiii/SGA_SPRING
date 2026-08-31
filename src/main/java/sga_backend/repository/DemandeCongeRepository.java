@@ -13,5 +13,9 @@ public interface DemandeCongeRepository extends JpaRepository<DemandeConge, Long
 
     // Demandes par statut
     List<DemandeConge> findByStatut(String statut);
+
+      // Toutes les demandes triées (les plus récentes d'abord) — page Historique (admin)
+    List<DemandeConge> findAllByOrderByDateCreationDesc();
+
     
 }
