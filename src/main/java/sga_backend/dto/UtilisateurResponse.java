@@ -20,6 +20,7 @@ public class UtilisateurResponse {
     private String libelleDirection;
     private Long idUnite;
     private String libelleUnite;   // ex. "Division Réseaux et Supports"
+    private String token;   // ← AJOUTER : le jeton JWT
 
     public UtilisateurResponse(Long id, String nom, String prenom, String login,
                                String statut, String codeProfil, String libelleProfil,

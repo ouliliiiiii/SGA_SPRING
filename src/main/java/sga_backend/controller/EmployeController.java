@@ -244,9 +244,21 @@ public ResponseEntity<?> lireColonnes(@RequestParam("fichier") MultipartFile fic
     }
         @Autowired private PosteRepository posteRepository;
 
-    @GetMapping("/postes/par-division/{idUnite}")
+        @GetMapping("/postes/par-division/{idUnite}")
     public ResponseEntity<?> getPostesParDivision(@PathVariable Long idUnite) {
         List<Poste> postes = posteRepository.findByUniteId(idUnite);
+        List<Map<String, Object>> result = postes.stream().map(p -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("libelle", p.getLibelle());
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/postes/par-direction/{idDirection}")
+    public ResponseEntity<?> getPostesParDirection(@PathVariable Long idDirection) {
+        List<Poste> postes = posteRepository.findByDirectionId(idDirection);
         List<Map<String, Object>> result = postes.stream().map(p -> {
             Map<String, Object> m = new HashMap<>();
             m.put("id", p.getId());

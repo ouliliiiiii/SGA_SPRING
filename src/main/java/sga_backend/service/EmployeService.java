@@ -19,7 +19,6 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -61,8 +60,9 @@ public class EmployeService {
     @Autowired private JavaMailSender mailSender;
     @Autowired private UniteRepository uniteRepository;
     @Autowired private PosteRepository posteRepository;
+    @Autowired private EmailService emailService;
    
-    @Value("${sga.app.url:http://192.168.159.1:4200}")
+    @Value("${sga.app.url:http://192.168.1.169:4200}")
     private String appUrl;
 
     @Value("${spring.mail.username}")
@@ -374,25 +374,30 @@ public class EmployeService {
     // ============================================
     // EMAIL DE BIENVENUE
     // ============================================
-    private void envoyerEmailBienvenue(String email, String nom, String prenom, String motDePasse) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(emailExpediteur);
-        message.setTo(email);
-        message.setSubject("Bienvenue sur SGA — Vos identifiants de connexion");
-        message.setText(
-            "Bonjour " + prenom + " " + nom + ",\n\n" +
-            "Votre compte a été créé sur le Système de Gestion des Absences (SGA).\n\n" +
-            "Vos identifiants de connexion :\n" +
-            "   Login        : " + email + "\n" +
-            "   Mot de passe : " + motDePasse + "\n\n" +
-            "Vous pouvez vous connecter à l'application à l'adresse suivante :\n" +
-            "   " + appUrl + "\n\n" +
-            "Nous vous recommandons de changer votre mot de passe dès votre première " +
-            "connexion via la page Mon Profil.\n\n" +
-            "Cordialement,\n" 
-       
-        );
-        mailSender.send(message);
+       private void envoyerEmailBienvenue(String email, String nom, String prenom, String motDePasse) {
+        String contenu = """
+            <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Bienvenue, %s %s</div>
+
+            <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 18px;">
+              Votre compte a été créé avec succès sur le Système de Gestion des Absences.
+              Voici vos identifiants de connexion :
+            </p>
+
+            <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:16px 18px;margin-bottom:18px;">
+              <div style="font-size:13px;color:#666666;margin-bottom:6px;">Identifiant (email professionnel)</div>
+              <div style="font-size:15px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">%s</div>
+              <div style="font-size:13px;color:#666666;margin-bottom:6px;">Mot de passe temporaire</div>
+              <div style="font-size:15px;color:#1B4D3E;font-weight:bold;font-family:monospace;">%s</div>
+            </div>
+
+            <p style="font-size:13px;color:#B07D0A;background:#fbf3e0;border-radius:6px;padding:12px 14px;margin:0 0 4px;line-height:1.5;">
+              Pour votre sécurité, veuillez changer ce mot de passe lors de votre première connexion via la page Mon Profil.
+            </p>
+
+            %s
+            """.formatted(prenom, nom, email, motDePasse, emailService.bouton("Se connecter", appUrl));
+
+        emailService.envoyerHtml(email, "Bienvenue sur SGA — Vos identifiants de connexion", contenu);
     }
 
     // ============================================

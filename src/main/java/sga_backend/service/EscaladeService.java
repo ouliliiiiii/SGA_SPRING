@@ -84,7 +84,7 @@ public class EscaladeService {
         notifierEscalade(demande, etape, suivante);
     }
 
-    private void notifierEscalade(DemandeConge demande, EtapeValidation etapeEscaladee, EtapeValidation suivante) {
+        private void notifierEscalade(DemandeConge demande, EtapeValidation etapeEscaladee, EtapeValidation suivante) {
         // Notifier le demandeur
         if (demande.getAgent() != null) {
             Utilisateur userDemandeur = utilisateurRepository.findByAgentId(demande.getAgent().getId()).orElse(null);
@@ -92,12 +92,29 @@ public class EscaladeService {
                 String msg = "L'étape « " + etapeEscaladee.getLibelle()
                     + " » de votre demande a été escaladée automatiquement (délai dépassé).";
                 notificationService.creer(userDemandeur.getId(), msg, "ESCALADE", demande.getId());
+
                 if (demande.getAgent().getEmail() != null) {
-                    emailService.envoyer(demande.getAgent().getEmail(),
-                        "Votre demande a été escaladée",
-                        "Bonjour,\n\nL'étape « " + etapeEscaladee.getLibelle()
-                        + " » de votre demande de congé n'a pas été traitée dans le délai imparti. "
-                        + "Elle a été escaladée automatiquement à l'étape suivante.\n\nSGA - SEN-CSU");
+                    String contenu = """
+                        <div style="font-size:16px;color:#B07D0A;font-weight:bold;margin-bottom:14px;">Votre demande a été escaladée</div>
+                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                          Bonjour,<br><br>
+                          L'étape « <strong>%s</strong> » de votre demande de congé n'a pas été traitée dans le délai imparti.
+                          Elle a donc été <strong>escaladée automatiquement</strong> à l'étape suivante du circuit.
+                        </p>
+                        <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                          %s
+                        </div>
+                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                          Vous serez informé(e) de la suite du traitement.
+                        </p>
+                        %s
+                        """.formatted(
+                            etapeEscaladee.getLibelle(),
+                            detailsDemandeHtml(demande),
+                            emailService.bouton("Voir ma demande", emailService.getAppUrl())
+                        );
+                    emailService.envoyerHtml(demande.getAgent().getEmail(),
+                        "Votre demande a été escaladée", contenu);
                 }
             }
         }
@@ -109,9 +126,26 @@ public class EscaladeService {
                 && validateurSuivant.getAgent().getEmail() != null) {
                 notificationService.creer(validateurSuivant.getId(),
                     "Une demande escaladée attend votre validation.", "DEMANDE_A_VALIDER", demande.getId());
-                emailService.envoyer(validateurSuivant.getAgent().getEmail(),
-                    "Une demande escaladée attend votre validation",
-                    "Bonjour,\n\nUne demande de congé a été escaladée et attend votre validation.\n\nSGA - SEN-CSU");
+
+                String contenu = """
+                    <div style="font-size:16px;color:#B07D0A;font-weight:bold;margin-bottom:14px;">Demande escaladée à traiter</div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                      Bonjour,<br><br>
+                      Une demande de congé a été <strong>escaladée automatiquement</strong> (l'étape précédente n'a pas été traitée dans le délai imparti) et attend désormais votre validation.
+                    </p>
+                    <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                      %s
+                    </div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                      Merci de la traiter en priorité.
+                    </p>
+                    %s
+                    """.formatted(
+                        detailsDemandeHtml(demande),
+                        emailService.bouton("Traiter la demande", emailService.getAppUrl())
+                    );
+                emailService.envoyerHtml(validateurSuivant.getAgent().getEmail(),
+                    "Une demande escaladée attend votre validation", contenu);
             }
         }
     }
@@ -140,5 +174,13 @@ public class EscaladeService {
             return u;
         }
         return null;
+    }
+
+        private String detailsDemandeHtml(DemandeConge d) {
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        String debut = d.getDateDebut() != null ? d.getDateDebut().format(fmt) : "—";
+        String fin = d.getDateFin() != null ? d.getDateFin().format(fmt) : "—";
+        return "<strong>Période :</strong> " + debut + " au " + fin
+             + "<br><strong>Durée :</strong> " + d.getNombreJours() + " jour(s)";
     }
 }

@@ -2,6 +2,7 @@ package sga_backend.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -334,8 +335,7 @@ public class CircuitValidationService {
             .filter(e -> e.getOrdre() > etape.getOrdre() && "EN_ATTENTE".equals(e.getStatut()))
             .findFirst().orElse(null);
 
-        if (suivante != null) {
-            // Activer l'étape suivante (départ de son chrono pour l'escalade)
+               if (suivante != null) {
             suivante.setDateActivation(LocalDateTime.now());
             etapeValidationRepository.save(suivante);
 
@@ -344,37 +344,66 @@ public class CircuitValidationService {
 
             // Notifier le demandeur que sa demande avance
             if (userDemandeur != null) {
-                String msg = "Votre demande de congé a été validée par " + validateur.getPrenom() + " " + validateur.getNom()
-                           + " et passe à l'étape suivante.";
+                String msg = "Votre demande de congé a été validée par " + validateur.getPrenom() + " "
+                    + validateur.getNom() + " et passe à l'étape suivante.";
                 notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_AVANCE", demande.getId());
+
                 if (agentDemandeur.getEmail() != null) {
-                    emailService.envoyer(agentDemandeur.getEmail(),
-                        "Votre demande de congé avance",
-                        "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
-                        + "Votre demande de congé a été validée à une étape par "
-                        + validateur.getPrenom() + " " + validateur.getNom() + ".\n"
-                        + detailsDemande(demande) + "\n\n"
-                        + "Elle est maintenant transmise au validateur suivant.\n\nSGA - SEN-CSU");
+                    String contenu = """
+                        <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Votre demande avance</div>
+                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                          Bonjour %s,<br><br>
+                          Votre demande de congé a été validée par <strong>%s %s</strong> et passe à l'étape suivante du circuit.
+                        </p>
+                        <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                          %s
+                        </div>
+                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                          Vous serez informé(e) de la suite du traitement.
+                        </p>
+                        %s
+                        """.formatted(
+                            agentDemandeur.getPrenom(),
+                            validateur.getPrenom(), validateur.getNom(),
+                            detailsDemandeHtml(demande),
+                            emailService.bouton("Voir ma demande", emailService.getAppUrl())
+                        );
+                    emailService.envoyerHtml(agentDemandeur.getEmail(),
+                        "Votre demande de congé avance", contenu);
                 }
             }
 
             // Notifier le validateur suivant
             Utilisateur validateurSuivant = trouverValidateurDeLEtape(suivante);
-            if (validateurSuivant != null && validateurSuivant.getAgent() != null) {
-                String msg = "Une demande de congé de " + agentDemandeur.getPrenom() + " " + agentDemandeur.getNom()
-                           + " attend votre validation.";
-                notificationService.creer(validateurSuivant.getId(), msg, "DEMANDE_A_VALIDER", demande.getId());
-                if (validateurSuivant.getAgent().getEmail() != null) {
-                    emailService.envoyer(validateurSuivant.getAgent().getEmail(),
-                        "Une demande de congé attend votre validation",
-                        "Bonjour " + validateurSuivant.getAgent().getPrenom() + ",\n\n"
-                        + "Une demande de congé de " + agentDemandeur.getPrenom() + " " + agentDemandeur.getNom()
-                        + " attend votre validation.\n"
-                        + detailsDemande(demande) + "\n\n"
-                        + "Merci de la traiter dans l'application SGA.\n\nSGA - SEN-CSU");
-                }
-            }
+            if (validateurSuivant != null && validateurSuivant.getAgent() != null
+                && validateurSuivant.getAgent().getEmail() != null) {
 
+                String msgVal = "Une demande de congé de " + agentDemandeur.getPrenom() + " "
+                    + agentDemandeur.getNom() + " attend votre validation.";
+                notificationService.creer(validateurSuivant.getId(), msgVal, "DEMANDE_A_VALIDER", demande.getId());
+
+                String contenu = """
+                    <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Une demande attend votre validation</div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                      Bonjour %s,<br><br>
+                      Une demande de congé de <strong>%s %s</strong> attend votre validation.
+                    </p>
+                    <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                      %s
+                    </div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                      Merci de la traiter dès que possible dans l'application.
+                    </p>
+                    %s
+                    """.formatted(
+                        validateurSuivant.getAgent().getPrenom(),
+                        agentDemandeur.getPrenom(), agentDemandeur.getNom(),
+                        detailsDemandeHtml(demande),
+                        emailService.bouton("Traiter la demande", emailService.getAppUrl())
+                    );
+                emailService.envoyerHtml(validateurSuivant.getAgent().getEmail(),
+                    "Une demande de congé attend votre validation", contenu);
+            }
         } else {
             demande.setStatut("VALIDEE");
             demandeCongeRepository.save(demande);
@@ -384,13 +413,27 @@ public class CircuitValidationService {
             if (userDemandeur != null) {
                 String msg = "Votre demande de congé a été approuvée définitivement.";
                 notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_VALIDEE", demande.getId());
-                if (agentDemandeur.getEmail() != null) {
-                    emailService.envoyer(agentDemandeur.getEmail(),
-                        "Votre demande de congé est approuvée",
-                        "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
-                        + "Bonne nouvelle : votre demande de congé a été approuvée définitivement.\n"
-                        + detailsDemande(demande) + "\n\n"
-                        + "Les jours ont été déduits de votre solde.\n\nSGA - SEN-CSU");
+                                if (agentDemandeur.getEmail() != null) {
+                    String contenu = """
+                        <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Votre demande est approuvée</div>
+                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                          Bonjour %s,<br><br>
+                          Bonne nouvelle : votre demande de congé a été <strong>approuvée définitivement</strong>.
+                        </p>
+                        <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                          %s
+                        </div>
+                        <p style="font-size:13px;color:#2E7D32;background:#e8f3e9;border-radius:6px;padding:12px 14px;margin:0;line-height:1.5;">
+                          Les jours correspondants ont été déduits de votre solde de congés.
+                        </p>
+                        %s
+                        """.formatted(
+                            agentDemandeur.getPrenom(),
+                            detailsDemandeHtml(demande),
+                            emailService.bouton("Voir ma demande", emailService.getAppUrl())
+                        );
+                    emailService.envoyerHtml(agentDemandeur.getEmail(),
+                        "Votre demande de congé est approuvée", contenu);
                 }
             }
         }
@@ -429,6 +472,14 @@ public class CircuitValidationService {
         return "Période : " + d.getDateDebut() + " au " + d.getDateFin()
              + " (" + d.getNombreJours() + " jour(s))";
     }
+        // Version HTML des détails d'une demande (pour les emails HTML)
+    private String detailsDemandeHtml(DemandeConge d) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        String debut = d.getDateDebut() != null ? d.getDateDebut().format(fmt) : "—";
+        String fin = d.getDateFin() != null ? d.getDateFin().format(fmt) : "—";
+        return "<strong>Période :</strong> " + debut + " au " + fin
+             + "<br><strong>Durée :</strong> " + d.getNombreJours() + " jour(s)";
+    }
     // ============================================================
     // REFUSER UNE ÉTAPE (couche 2)
     // ============================================================
@@ -464,22 +515,42 @@ public class CircuitValidationService {
         // Notifier le demandeur du refus avec le motif
         Agent agentDemandeur = demande.getAgent();
         Utilisateur userDemandeur = utilisateurRepository.findByAgentId(agentDemandeur.getId()).orElse(null);
+
         if (userDemandeur != null) {
-            String msg = "Votre demande de congé a été refusée par " + validateur.getPrenom() + " " + validateur.getNom()
-                       + ". Motif : " + commentaire;
+            String msg = "Votre demande de congé a été refusée par " + validateur.getPrenom() + " "
+                + validateur.getNom() + ". Motif : " + commentaire;
             notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_REFUSEE", demande.getId());
+
             if (agentDemandeur.getEmail() != null) {
-                emailService.envoyer(agentDemandeur.getEmail(),
-                    "Votre demande de congé a été refusée",
-                    "Bonjour " + agentDemandeur.getPrenom() + ",\n\n"
-                    + "Votre demande de congé a été refusée par "
-                    + validateur.getPrenom() + " " + validateur.getNom() + ".\n"
-                    + detailsDemande(demande) + "\n\n"
-                    + "Motif du refus : " + commentaire + "\n\nSGA - SEN-CSU");
+                String contenu = """
+                    <div style="font-size:16px;color:#C0392B;font-weight:bold;margin-bottom:14px;">Votre demande a été refusée</div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                      Bonjour %s,<br><br>
+                      Votre demande de congé a été refusée par <strong>%s %s</strong>.
+                    </p>
+                    <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                      %s
+                    </div>
+                    <div style="background:#fbeaea;border-left:3px solid #C0392B;border-radius:6px;padding:14px 16px;margin-bottom:16px;">
+                      <div style="font-size:13px;color:#C0392B;font-weight:bold;margin-bottom:6px;">Motif du refus</div>
+                      <div style="font-size:14px;color:#444444;">%s</div>
+                    </div>
+                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                      Pour toute question, rapprochez-vous de votre responsable ou du service RH.
+                    </p>
+                    %s
+                    """.formatted(
+                        agentDemandeur.getPrenom(),
+                        validateur.getPrenom(), validateur.getNom(),
+                        detailsDemandeHtml(demande),
+                        commentaire,
+                        emailService.bouton("Voir ma demande", emailService.getAppUrl())
+                    );
+                emailService.envoyerHtml(agentDemandeur.getEmail(),
+                    "Votre demande de congé a été refusée", contenu);
             }
         }
     }
-
     // Vérifie que l'étape est bien la première EN_ATTENTE (on ne saute pas d'étape)
     private void verifierEtapeCourante(EtapeValidation etape) {
         List<EtapeValidation> toutes = etapeValidationRepository

@@ -8,4 +8,5 @@ import sga_backend.entity.Poste;
 
 public interface PosteRepository extends JpaRepository<Poste, Long> {
     List<Poste> findByUniteId(Long idUnite);
+        List<Poste> findByDirectionId(Long idDirection);
 }

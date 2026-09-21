@@ -30,4 +30,9 @@ public class Poste {
     public void setLibelle(String libelle) { this.libelle = libelle; }
     public UniteOrganisationnelle getUnite() { return unite; }
     public void setUnite(UniteOrganisationnelle unite) { this.unite = unite; }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_direction")
+    private Direction direction;
+
 }
