@@ -349,16 +349,16 @@ public class CircuitValidationService {
                 notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_AVANCE", demande.getId());
 
                 if (agentDemandeur.getEmail() != null) {
-                    String contenu = """
-                        <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Votre demande avance</div>
-                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                                   String contenu = """
+                        <div style="font-size:20px;color:#1a1a1a;font-weight:600;margin-bottom:12px;">Votre demande avance</div>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 20px;">
                           Bonjour %s,<br><br>
-                          Votre demande de congé a été validée par <strong>%s %s</strong> et passe à l'étape suivante du circuit.
+                          Votre demande de congé a été validée par <strong style="color:#1a1a1a;">%s %s</strong> et passe à l'étape suivante du circuit.
                         </p>
-                        <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                        <div style="background:#F4F8F6;border-radius:8px;padding:18px 20px;margin-bottom:20px;">
                           %s
                         </div>
-                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 24px;">
                           Vous serez informé(e) de la suite du traitement.
                         </p>
                         %s
@@ -383,15 +383,15 @@ public class CircuitValidationService {
                 notificationService.creer(validateurSuivant.getId(), msgVal, "DEMANDE_A_VALIDER", demande.getId());
 
                 String contenu = """
-                    <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Une demande attend votre validation</div>
-                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                    <div style="font-size:20px;color:#1a1a1a;font-weight:600;margin-bottom:12px;">Une demande attend votre validation</div>
+                    <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 20px;">
                       Bonjour %s,<br><br>
-                      Une demande de congé de <strong>%s %s</strong> attend votre validation.
+                      Une demande de congé de <strong style="color:#1a1a1a;">%s %s</strong> attend votre validation.
                     </p>
-                    <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                    <div style="background:#F4F8F6;border-radius:8px;padding:18px 20px;margin-bottom:20px;">
                       %s
                     </div>
-                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
+                    <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 24px;">
                       Merci de la traiter dès que possible dans l'application.
                     </p>
                     %s
@@ -414,18 +414,18 @@ public class CircuitValidationService {
                 String msg = "Votre demande de congé a été approuvée définitivement.";
                 notificationService.creer(userDemandeur.getId(), msg, "DEMANDE_VALIDEE", demande.getId());
                                 if (agentDemandeur.getEmail() != null) {
-                    String contenu = """
-                        <div style="font-size:16px;color:#1B4D3E;font-weight:bold;margin-bottom:14px;">Votre demande est approuvée</div>
-                        <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
+                                       String contenu = """
+                        <div style="font-size:20px;color:#1a1a1a;font-weight:600;margin-bottom:12px;">Votre demande est approuvée</div>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 20px;">
                           Bonjour %s,<br><br>
-                          Bonne nouvelle : votre demande de congé a été <strong>approuvée définitivement</strong>.
+                          Bonne nouvelle : votre demande de congé a été <strong style="color:#1a1a1a;">approuvée définitivement</strong>.
                         </p>
-                        <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
+                        <div style="background:#F4F8F6;border-radius:8px;padding:18px 20px;margin-bottom:16px;">
                           %s
                         </div>
-                        <p style="font-size:13px;color:#2E7D32;background:#e8f3e9;border-radius:6px;padding:12px 14px;margin:0;line-height:1.5;">
+                        <div style="font-size:13px;color:#2E7D32;background:#e8f3e9;border-radius:8px;padding:14px 18px;margin-bottom:24px;line-height:1.5;">
                           Les jours correspondants ont été déduits de votre solde de congés.
-                        </p>
+                        </div>
                         %s
                         """.formatted(
                             agentDemandeur.getPrenom(),
@@ -472,13 +472,25 @@ public class CircuitValidationService {
         return "Période : " + d.getDateDebut() + " au " + d.getDateFin()
              + " (" + d.getNombreJours() + " jour(s))";
     }
-        // Version HTML des détails d'une demande (pour les emails HTML)
+          // Version HTML des détails d'une demande (pour les emails HTML)
     private String detailsDemandeHtml(DemandeConge d) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         String debut = d.getDateDebut() != null ? d.getDateDebut().format(fmt) : "—";
         String fin = d.getDateFin() != null ? d.getDateFin().format(fmt) : "—";
-        return "<strong>Période :</strong> " + debut + " au " + fin
-             + "<br><strong>Durée :</strong> " + d.getNombreJours() + " jour(s)";
+        String dateCreation = d.getDateCreation() != null ? d.getDateCreation().format(fmt) : "—";
+        String type = (d.getTypeConge() != null) ? d.getTypeConge().getLibelle() : "—";
+        String agent = (d.getAgent() != null)
+            ? d.getAgent().getPrenom() + " " + d.getAgent().getNom() : "—";
+
+        return """
+            <table style="width:100%%;border-collapse:collapse;font-size:13px;color:#444;">
+              <tr><td style="padding:4px 0;color:#999;width:140px;">Agent</td><td style="padding:4px 0;font-weight:600;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Type de congé</td><td style="padding:4px 0;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Date de la demande</td><td style="padding:4px 0;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Période</td><td style="padding:4px 0;">du %s au %s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Durée</td><td style="padding:4px 0;font-weight:600;">%s jour(s)</td></tr>
+            </table>
+            """.formatted(agent, type, dateCreation, debut, fin, d.getNombreJours());
     }
     // ============================================================
     // REFUSER UNE ÉTAPE (couche 2)

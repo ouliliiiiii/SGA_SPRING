@@ -1,6 +1,7 @@
 package sga_backend.service;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -127,23 +128,25 @@ public class EscaladeService {
                 notificationService.creer(validateurSuivant.getId(),
                     "Une demande escaladée attend votre validation.", "DEMANDE_A_VALIDER", demande.getId());
 
-                String contenu = """
-                    <div style="font-size:16px;color:#B07D0A;font-weight:bold;margin-bottom:14px;">Demande escaladée à traiter</div>
-                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0 0 16px;">
-                      Bonjour,<br><br>
-                      Une demande de congé a été <strong>escaladée automatiquement</strong> (l'étape précédente n'a pas été traitée dans le délai imparti) et attend désormais votre validation.
-                    </p>
-                    <div style="background:#f4f8f6;border-left:3px solid #1B4D3E;border-radius:6px;padding:14px 16px;margin-bottom:16px;font-size:14px;color:#444444;">
-                      %s
-                    </div>
-                    <p style="font-size:14px;color:#444444;line-height:1.6;margin:0;">
-                      Merci de la traiter en priorité.
-                    </p>
-                    %s
-                    """.formatted(
-                        detailsDemandeHtml(demande),
-                        emailService.bouton("Traiter la demande", emailService.getAppUrl())
-                    );
+                        String contenu = """
+                        <div style="font-size:20px;color:#1a1a1a;font-weight:600;margin-bottom:12px;">Votre demande a été escaladée</div>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 20px;">
+                          Bonjour,<br><br>
+                          L'étape « <strong style="color:#1a1a1a;">%s</strong> » de votre demande de congé n'a pas été traitée dans le délai imparti.
+                          Elle a donc été <strong style="color:#1a1a1a;">escaladée automatiquement</strong> à l'étape suivante du circuit.
+                        </p>
+                        <div style="background:#F4F8F6;border-radius:8px;padding:18px 20px;margin-bottom:20px;">
+                          %s
+                        </div>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 24px;">
+                          Vous serez informé(e) de la suite du traitement.
+                        </p>
+                        %s
+                        """.formatted(
+                            etapeEscaladee.getLibelle(),
+                            detailsDemandeHtml(demande),
+                            emailService.bouton("Voir ma demande", emailService.getAppUrl())
+                        );
                 emailService.envoyerHtml(validateurSuivant.getAgent().getEmail(),
                     "Une demande escaladée attend votre validation", contenu);
             }
@@ -176,11 +179,24 @@ public class EscaladeService {
         return null;
     }
 
-        private String detailsDemandeHtml(DemandeConge d) {
-        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+           // Version HTML des détails d'une demande (pour les emails HTML)
+    private String detailsDemandeHtml(DemandeConge d) {
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
         String debut = d.getDateDebut() != null ? d.getDateDebut().format(fmt) : "—";
         String fin = d.getDateFin() != null ? d.getDateFin().format(fmt) : "—";
-        return "<strong>Période :</strong> " + debut + " au " + fin
-             + "<br><strong>Durée :</strong> " + d.getNombreJours() + " jour(s)";
-    }
+        String dateCreation = d.getDateCreation() != null ? d.getDateCreation().format(fmt) : "—";
+        String type = (d.getTypeConge() != null) ? d.getTypeConge().getLibelle() : "—";
+        String agent = (d.getAgent() != null)
+            ? d.getAgent().getPrenom() + " " + d.getAgent().getNom() : "—";
+
+        return """
+            <table style="width:100%%;border-collapse:collapse;font-size:13px;color:#444;">
+              <tr><td style="padding:4px 0;color:#999;width:140px;">Agent</td><td style="padding:4px 0;font-weight:600;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Type de congé</td><td style="padding:4px 0;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Date de la demande</td><td style="padding:4px 0;">%s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Période</td><td style="padding:4px 0;">du %s au %s</td></tr>
+              <tr><td style="padding:4px 0;color:#999;">Durée</td><td style="padding:4px 0;font-weight:600;">%s jour(s)</td></tr>
+            </table>
+            """.formatted(agent, type, dateCreation, debut, fin, d.getNombreJours());
+    }   
 }

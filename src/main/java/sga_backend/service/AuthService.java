@@ -4,8 +4,6 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -163,24 +161,24 @@ public class AuthService {
     // ============================================
     // Email contenant le code
     // ============================================
-    @Autowired
-    private JavaMailSender mailSender;
-    @Value("${spring.mail.username}")
-    private String emailExpediteur;
+        @Autowired
+    private EmailService emailService;
+
     private void envoyerEmailCodeReset(String email, String prenom, String code) {
-        org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
-        message.setFrom(emailExpediteur);
-        message.setTo(email);
-        message.setSubject("SGA — Code de réinitialisation de mot de passe");
-        message.setText(
-            "Bonjour " + prenom + ",\n\n" +
-            "Vous avez demandé la réinitialisation de votre mot de passe.\n\n" +
-            "Votre code de vérification est : " + code + "\n\n" +
-            "Ce code est valable 5 minutes. Si vous n'êtes pas à l'origine de cette demande, " +
-            "ignorez cet email.\n\n" +
-            "Cordialement,\n" +
-            "L'équipe administrative SGA"
-        );
-        mailSender.send(message);
+        String contenu = """
+            <div style="font-size:22px;color:#1a1a1a;font-weight:600;margin-bottom:8px;line-height:1.3;">Réinitialisation<br>de mot de passe</div>
+            <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 24px;">
+              Bonjour %s,<br><br>
+              Vous avez demandé la réinitialisation de votre mot de passe. Voici votre code de vérification :
+            </p>
+            <div style="text-align:center;background:#F4F8F6;border-radius:8px;padding:24px;margin-bottom:20px;">
+              <div style="font-size:32px;color:#1B4D3E;font-weight:700;letter-spacing:8px;font-family:monospace;">%s</div>
+            </div>
+            <p style="font-size:13px;color:#B07D0A;background:#fbf3e0;border-radius:6px;padding:12px 14px;margin:0;line-height:1.5;">
+              Ce code est valable 5 minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.
+            </p>
+            """.formatted(prenom, code);
+
+        emailService.envoyerHtml(email, "SGA — Code de réinitialisation de mot de passe", contenu);
     }
 }
