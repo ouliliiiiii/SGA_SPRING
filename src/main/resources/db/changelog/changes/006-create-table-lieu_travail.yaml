@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-create-table-lieu_travail
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: lieu_travail
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type_entite
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: region
+                  type: VARCHAR(100)
+              - column:
+                  name: id_entite_parent
+                  type: BIGINT
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false

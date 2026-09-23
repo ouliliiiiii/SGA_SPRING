@@ -1,0 +1,35 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-table-fonction
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: fonction
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false

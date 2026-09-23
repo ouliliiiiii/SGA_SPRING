@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-create-table-unite_organisationnelle
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: unite_organisationnelle
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_direction
+                  type: BIGINT
+              - column:
+                  name: id_lieu_travail
+                  type: BIGINT
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false

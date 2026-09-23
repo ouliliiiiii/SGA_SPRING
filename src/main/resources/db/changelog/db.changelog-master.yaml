@@ -1,3 +1,33 @@
 databaseChangeLog:
   - include:
-      file: db/changelog/changes/001-structure-initiale.yaml
+      file: db/changelog/changes/001-create-table-profil.yaml
+  - include:
+      file: db/changelog/changes/002-create-table-categorie_socio_pro.yaml
+  - include:
+      file: db/changelog/changes/003-create-table-fonction.yaml
+  - include:
+      file: db/changelog/changes/004-create-table-type_conge.yaml
+  - include:
+      file: db/changelog/changes/005-create-table-jour_ferie.yaml
+  - include:
+      file: db/changelog/changes/006-create-table-lieu_travail.yaml
+  - include:
+      file: db/changelog/changes/007-create-table-direction.yaml
+  - include:
+      file: db/changelog/changes/008-create-table-unite_organisationnelle.yaml
+  - include:
+      file: db/changelog/changes/009-create-table-poste.yaml
+  - include:
+      file: db/changelog/changes/010-create-table-agent.yaml
+  - include:
+      file: db/changelog/changes/011-create-table-utilisateur.yaml
+  - include:
+      file: db/changelog/changes/012-create-table-enfant_agent.yaml
+  - include:
+      file: db/changelog/changes/013-create-table-solde_conges.yaml
+  - include:
+      file: db/changelog/changes/014-create-table-demande_conge.yaml
+  - include:
+      file: db/changelog/changes/015-create-table-etape_validation.yaml
+  - include:
+      file: db/changelog/changes/016-create-table-notification.yaml

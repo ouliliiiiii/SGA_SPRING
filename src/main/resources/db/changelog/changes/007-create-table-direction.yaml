@@ -1,0 +1,43 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-create-table-direction
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: direction
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_parent
+                  type: BIGINT

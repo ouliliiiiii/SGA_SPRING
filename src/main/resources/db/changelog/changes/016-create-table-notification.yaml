@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 016-create-table-notification
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: notification
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: id_destinataire
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: message
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(30)
+              - column:
+                  name: id_demande
+                  type: BIGINT
+              - column:
+                  name: lu
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false

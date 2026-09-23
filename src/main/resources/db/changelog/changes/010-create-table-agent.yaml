@@ -1,0 +1,107 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-create-table-agent
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: agent
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: matricule
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prenom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_naissance
+                  type: DATE
+              - column:
+                  name: cni
+                  type: VARCHAR(30)
+              - column:
+                  name: sexe
+                  type: VARCHAR(5)
+              - column:
+                  name: telephone
+                  type: VARCHAR(30)
+              - column:
+                  name: email
+                  type: VARCHAR(150)
+              - column:
+                  name: email_personnel
+                  type: VARCHAR(150)
+              - column:
+                  name: numero_de_poste
+                  type: VARCHAR(150)
+              - column:
+                  name: type_contrat
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_embauche
+                  type: DATE
+              - column:
+                  name: date_fin_contrat
+                  type: DATE
+              - column:
+                  name: id_fonction
+                  type: BIGINT
+              - column:
+                  name: id_categorie_socio_pro
+                  type: BIGINT
+              - column:
+                  name: id_superieur
+                  type: BIGINT
+              - column:
+                  name: statut
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_enfants
+                  type: INT
+              - column:
+                  name: adresse1
+                  type: VARCHAR(255)
+              - column:
+                  name: adresse2
+                  type: VARCHAR(255)
+              - column:
+                  name: ville
+                  type: VARCHAR(100)
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_maj
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_unite
+                  type: BIGINT
+              - column:
+                  name: id_direction
+                  type: BIGINT
+              - column:
+                  name: id_poste
+                  type: BIGINT

@@ -1,0 +1,33 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-table-profil
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: profil
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: VARCHAR(255)
+              - column:
+                  name: niveau
+                  type: INT
+                  constraints:
+                    nullable: false

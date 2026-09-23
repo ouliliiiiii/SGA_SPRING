@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: 012-create-table-enfant_agent
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: enfant_agent
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: id_agent
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prenom
+                  type: VARCHAR(100)
+              - column:
+                  name: date_naissance
+                  type: DATE
+                  constraints:
+                    nullable: false

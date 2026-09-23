@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - changeSet:
+      id: 011-create-table-utilisateur
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: utilisateur
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: prenom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_inscription
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: statut
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: login
+                  type: VARCHAR(150)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mot_de_passe
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_agent
+                  type: BIGINT
+              - column:
+                  name: id_profil
+                  type: BIGINT
+              - column:
+                  name: code_reset
+                  type: VARCHAR(6)
+              - column:
+                  name: code_reset_expiration
+                  type: TIMESTAMP

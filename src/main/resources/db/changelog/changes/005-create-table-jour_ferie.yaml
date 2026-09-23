@@ -1,0 +1,39 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-create-table-jour_ferie
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: jour_ferie
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nom
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: jour
+                  type: INT
+              - column:
+                  name: mois
+                  type: INT
+              - column:
+                  name: date
+                  type: DATE
+              - column:
+                  name: actif
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false

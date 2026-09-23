@@ -1,0 +1,63 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-create-table-solde_conges
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: solde_conges
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: id_agent
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_conges_acquis
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_jour_pris_deductible
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_conges_reliquat
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_conges_supplementaire
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_conges_echus
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_conges_encours
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nb_jour_sans_solde
+                  type: DECIMAL(6, 2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_dernier_calcul
+                  type: TIMESTAMP
+              - column:
+                  name: date_maj
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false

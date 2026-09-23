@@ -1,0 +1,69 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-create-table-demande_conge
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: demande_conge
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: id_agent
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_type_conge
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_debut
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_fin
+                  type: DATE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: moment_debut
+                  type: VARCHAR(15)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: moment_fin
+                  type: VARCHAR(15)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: nombre_jours
+                  type: DECIMAL(5, 1)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: motif
+                  type: VARCHAR(500)
+              - column:
+                  name: justificatif
+                  type: VARCHAR(255)
+              - column:
+                  name: statut
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_demandeur
+                  type: BIGINT

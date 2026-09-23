@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-create-table-poste
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: poste
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_unite
+                  type: BIGINT
+              - column:
+                  name: id_direction
+                  type: BIGINT

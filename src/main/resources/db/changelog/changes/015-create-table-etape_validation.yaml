@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 015-create-table-etape_validation
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: etape_validation
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: id_demande
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ordre
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: profil_attendu
+                  type: VARCHAR(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: libelle
+                  type: VARCHAR(100)
+              - column:
+                  name: statut
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_validateur
+                  type: BIGINT
+              - column:
+                  name: date_action
+                  type: TIMESTAMP
+              - column:
+                  name: commentaire
+                  type: VARCHAR(500)
+              - column:
+                  name: date_creation
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: id_unite_attendue
+                  type: BIGINT
+              - column:
+                  name: id_direction_attendue
+                  type: BIGINT
+              - column:
+                  name: date_activation
+                  type: TIMESTAMP
