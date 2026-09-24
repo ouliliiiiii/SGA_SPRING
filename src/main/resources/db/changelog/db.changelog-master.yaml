@@ -31,3 +31,5 @@ databaseChangeLog:
       file: db/changelog/changes/015-create-table-etape_validation.yaml
   - include:
       file: db/changelog/changes/016-create-table-notification.yaml
+  - include:
+      file: db/changelog/changes/017-add-token-actif-utilisateur.yaml

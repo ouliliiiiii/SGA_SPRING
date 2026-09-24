@@ -1,21 +1,22 @@
 package sga_backend.config;
 
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.List;
+
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import sga_backend.service.JwtService;
-import sga_backend.repository.UtilisateurRepository;
-import sga_backend.entity.Utilisateur;
 
-import java.io.IOException;
-import java.util.List;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import sga_backend.entity.Utilisateur;
+import sga_backend.repository.UtilisateurRepository;
+import sga_backend.service.JwtService;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
@@ -28,9 +29,22 @@ public class JwtFilter extends OncePerRequestFilter {
         this.utilisateurRepository = utilisateurRepository;
     }
 
+    private static final List<String> PUBLIC_PATHS = List.of(
+    "/api/auth/login",
+    "/api/auth/mot-de-passe-oublie",
+    "/api/auth/reinitialiser-mot-de-passe"
+);
+
+@Override
+protected boolean shouldNotFilter(HttpServletRequest request) {
+    return "OPTIONS".equalsIgnoreCase(request.getMethod())
+        || PUBLIC_PATHS.contains(request.getServletPath());
+}
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+
 
         final String authHeader = request.getHeader("Authorization");
 
@@ -48,7 +62,13 @@ public class JwtFilter extends OncePerRequestFilter {
             if (login != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 Utilisateur utilisateur = utilisateurRepository.findByLogin(login).orElse(null);
 
-                if (utilisateur != null && jwtService.estValide(token, login)) {
+                if (utilisateur != null && jwtService.estValide(token, login)) 
+                    {
+                         if (!token.equals(utilisateur.getTokenActif())) {
+                        // Ce token n'est plus le token actif → une nouvelle connexion a eu lieu ailleurs
+                        filterChain.doFilter(request, response);
+                        return;  // pas d'authentification → sera refusé (401)
+                    }
                     // Récupérer le rôle pour les autorisations
                     String role = utilisateur.getProfil() != null ? utilisateur.getProfil().getCode() : "USER";
 

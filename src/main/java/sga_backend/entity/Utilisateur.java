@@ -58,4 +58,7 @@ private Agent agent;
 private String codeReset;
 
 private LocalDateTime codeResetExpiration;
+
+ @Column(name = "token_actif", length = 500)
+    private String tokenActif;
 }

@@ -17,6 +17,7 @@ import sga_backend.dto.LoginRequest;
 import sga_backend.dto.ResetMotDePasseRequest;
 import sga_backend.dto.UtilisateurResponse;
 import sga_backend.entity.Utilisateur;
+import sga_backend.repository.UtilisateurRepository;
 import sga_backend.service.AuthService;
 import sga_backend.service.JwtService;
  
@@ -26,6 +27,8 @@ import sga_backend.service.JwtService;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+        
+    @Autowired private UtilisateurRepository utilisateurRepository;
 
     @Autowired
     private AuthService authService;
@@ -35,7 +38,8 @@ public class AuthController {
     // ENDPOINT : LOGIN
     // POST /api/auth/login
     // ============================================
-     @PostMapping("/login")
+    
+    @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         try {
             Utilisateur utilisateur = authService.login(
@@ -43,18 +47,20 @@ public class AuthController {
                 request.getMotDePasse()
             );
 
-            String token = jwtService.genererToken(utilisateur.getLogin());   // génère le token
+            String token = jwtService.genererToken(utilisateur.getLogin());
+
+             // Enregistrer ce token comme le token actif (invalide les précédents)
+            utilisateur.setTokenActif(token);
+            utilisateurRepository.save(utilisateur);
 
             UtilisateurResponse reponse = UtilisateurResponse.depuis(utilisateur);
-            reponse.setToken(token);   // ← ajoute le token à la réponse
+            reponse.setToken(token);
 
-            return ResponseEntity.ok(reponse);   // ← renvoie "reponse" (PAS depuis(utilisateur))
+            return ResponseEntity.ok(reponse);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
-    }
-
- 
+    } 
    
 // 
 // ============================================================

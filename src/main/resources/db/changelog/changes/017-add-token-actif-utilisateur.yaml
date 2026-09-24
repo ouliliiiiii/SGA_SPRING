@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 017-add-token-actif-utilisateur
+      author: mme niane
+      changes:
+        - addColumn:
+            tableName: utilisateur
+            columns:
+              - column:
+                  name: token_actif
+                  type: VARCHAR(500)
