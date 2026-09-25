@@ -18,12 +18,6 @@ build-job:
   tags:
     - srv-sga
   script:
-    - echo "=== Diagnostic environnement ==="
-    - which java
-    - which javac
-    - java -version
-    - javac -version
-    - mvn -version
     - echo "Build du projet SGA..."
     - mvn clean compile -B
   rules:
@@ -39,7 +33,14 @@ test-job:
     SPRING_DATASOURCE_PASSWORD: "$SGA_TEST_DB_PASSWORD"
     SPRING_JPA_HIBERNATE_DDL_AUTO: "create-drop"
     SPRING_FLYWAY_ENABLED: "false"
-    SPRING_AI_OPENAI_API_KEY: "sk-dummy-key-for-ci-testing-only"
+    SGA_JWT_SECRET: "test-secret-ne-pas-utiliser-en-prod-remplacer-par-valeur-aleatoire-64-car"
+    SGA_JWT_EXPIRATION: "7200000"
+    SGA_APP_URL: "http://localhost:4200"
+    SGA_BACKEND_URL: "http://localhost:8080"
+    SPRING_MAIL_HOST: "smtp.gmail.com"
+    SPRING_MAIL_PORT: "587"
+    SPRING_MAIL_USERNAME: "test@example.com"
+    SPRING_MAIL_PASSWORD: "dummy-test-password"
   script:
     - echo "Tests unitaires..."
     - mvn test -B
