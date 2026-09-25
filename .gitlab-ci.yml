@@ -18,6 +18,12 @@ build-job:
   tags:
     - srv-sga
   script:
+    - echo "=== Diagnostic environnement ==="
+    - which java
+    - which javac
+    - java -version
+    - javac -version
+    - mvn -version
     - echo "Build du projet SGA..."
     - mvn clean compile -B
   rules:
