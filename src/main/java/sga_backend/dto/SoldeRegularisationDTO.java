@@ -1,6 +1,7 @@
 package sga_backend.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import lombok.Data;
@@ -27,4 +28,5 @@ public class SoldeRegularisationDTO {
     private BigDecimal nbCongesEchus;
     private BigDecimal nbJourSansSolde;
     private LocalDateTime dateDernierCalcul;
+    private LocalDate dateEmbauche;
 }

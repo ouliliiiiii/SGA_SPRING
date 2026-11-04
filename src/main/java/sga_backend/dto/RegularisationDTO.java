@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+
 @Data
 public class RegularisationDTO {
     private Long id;
@@ -18,4 +19,5 @@ public class RegularisationDTO {
     private BigDecimal nbJours;
     private LocalDateTime dateOperation;
     private String effectuePar;
+
 }

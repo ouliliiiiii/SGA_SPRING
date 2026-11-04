@@ -231,6 +231,7 @@ public List<SoldeRegularisationDTO> listerPourRegularisation() {
         dto.setNom(agent.getNom());
         dto.setPrenom(agent.getPrenom());
         dto.setStatut(agent.getStatut());
+        dto.setDateEmbauche(agent.getDateEmbauche());
 
         // Direction (lue directement sur l'agent)
         if (agent.getDirection() != null) {
