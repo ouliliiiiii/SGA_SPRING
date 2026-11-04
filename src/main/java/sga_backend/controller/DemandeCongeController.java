@@ -1,10 +1,15 @@
 package sga_backend.controller;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,13 +29,27 @@ import org.springframework.web.multipart.MultipartFile;
 
 import sga_backend.dto.CreerDemandeRequest;
 import sga_backend.dto.DemandeCongeDTO;
+import sga_backend.repository.AgentRepository;
 import sga_backend.service.DemandeCongeService;
+import sga_backend.service.PermissionPdfService;
+import sga_backend.service.SoldeCongesService;
+
+import sga_backend.entity.Agent;
+import sga_backend.entity.DemandeConge;
+import sga_backend.entity.EtapeValidation;
+import sga_backend.repository.DemandeCongeRepository;
+import sga_backend.repository.EtapeValidationRepository;
 
 @RestController
 @RequestMapping("/api/demandes-conge")
 public class DemandeCongeController {
 
     @Autowired private DemandeCongeService demandeCongeService;
+    @Autowired private AgentRepository agentRepository;           
+    @Autowired private SoldeCongesService soldeCongesService;
+    @Autowired private DemandeCongeRepository demandeCongeRepository;     
+    @Autowired private PermissionPdfService permissionPdfService;
+@Autowired private EtapeValidationRepository etapeValidationRepository;  
 
     // Dossier de stockage des justificatifs (configurable dans application.properties)
     @Value("${sga.upload.justificatifs:uploads/justificatifs}")
@@ -66,8 +85,27 @@ public class DemandeCongeController {
             Files.createDirectories(dossier);
 
             // Nom unique : {idDemande}_{timestamp}_{nomOriginal}
+                      // Récupérer la demande pour construire un nom parlant
+            DemandeConge demande = demandeCongeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Demande introuvable"));
+
+            // Extension du fichier original
             String nomOriginal = fichier.getOriginalFilename();
-            String nomFichier = id + "_" + System.currentTimeMillis() + "_" + nomOriginal;
+            String ext = "";
+            if (nomOriginal != null) {
+                int pt = nomOriginal.lastIndexOf('.');
+                if (pt >= 0) ext = nomOriginal.substring(pt);
+            }
+
+            // Nom parlant : {id}_{Nom}_{Prenom}_{dateDebut}.ext
+            Agent agent = demande.getAgent();
+            String nom = (agent != null && agent.getNom() != null) ? agent.getNom() : "";
+            String prenom = (agent != null && agent.getPrenom() != null) ? agent.getPrenom() : "";
+            String dateDeb = demande.getDateDebut() != null ? demande.getDateDebut().toString() : "";
+
+            String nomFichier = (id + "_" + nom + "_" + prenom + "_" + dateDeb + ext)
+                .replaceAll("[\\\\/:*?\"<>|]", "_")   // caractères interdits dans un nom de fichier
+                .replaceAll("\\s+", "_");             // espaces → _
 
             Path cible = dossier.resolve(nomFichier);
             Files.copy(fichier.getInputStream(), cible);
@@ -160,5 +198,96 @@ public class DemandeCongeController {
             .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
             .body(fichier);
     }
+
+
+    @GetMapping("/echus-a-date")
+    public ResponseEntity<?> echusADate(
+            @RequestParam Long idAgent,
+            @RequestParam String date) {
+        Agent agent = agentRepository.findById(idAgent)
+            .orElseThrow(() -> new RuntimeException("Agent introuvable"));
+        LocalDate d = LocalDate.parse(date);
+        BigDecimal echus = soldeCongesService.calculerEchusALaDate(agent, d);
+        Map<String, Object> result = new HashMap<>();
+        result.put("echus", echus);
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/export-zip")
+public ResponseEntity<byte[]> exporterDemandesAvecJustificatifs(@RequestBody List<Long> ids) {
+    byte[] zip = demandeCongeService.exporterDemandesAvecJustificatifs(ids);
+    return ResponseEntity.ok()
+        .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=export_demandes.zip")
+        .contentType(org.springframework.http.MediaType.parseMediaType("application/zip"))
+        .body(zip);
+}
+
+    @GetMapping("/{id}/permission")
+public ResponseEntity<byte[]> telechargerPermission(
+        @PathVariable Long id,
+        @RequestParam(value = "titre", required = false) String titre) {
+    try {
+        DemandeConge demande = demandeCongeRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Demande introuvable"));
+
+        // Étapes du circuit (pour les visas)
+        List<EtapeValidation> etapes = etapeValidationRepository.findByDemandeIdOrderByOrdreAsc(id);
+
+        // Titre : personnalisé si fourni, sinon auto selon la catégorie
+        String titreFinal = (titre != null && !titre.isBlank())
+            ? titre
+            : titreParDefaut(demande.getTypeConge() != null ? demande.getTypeConge().getCategorie() : null);
+
+        byte[] pdf = permissionPdfService.genererPermission(demande, etapes, titreFinal);
+
+        String nomFichier = "permission_" + id + ".pdf";
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + nomFichier)
+            .contentType(MediaType.APPLICATION_PDF)
+            .body(pdf);
+    } catch (RuntimeException e) {
+        return ResponseEntity.badRequest().body(null);
+    }
+}
+
+// Titre par défaut selon la catégorie
+private String titreParDefaut(String categorie) {
+    if (categorie == null) return "PERMISSION D'ABSENCE";
+    switch (categorie.toUpperCase()) {
+        case "DEDUCTIBLE":      return "PERMISSION D'ABSENCE DÉDUCTIBLE DES CONGÉS";
+        case "NON_DEDUCTIBLE":  return "PERMISSION EXCEPTIONNELLE D'ABSENCE NON DÉDUCTIBLE DES CONGÉS";
+        case "SANS_SOLDE":      return "PERMISSION D'ABSENCE SANS SOLDE";
+        default:                return "PERMISSION D'ABSENCE";
+    }
+}
+@GetMapping("/{id}/justificatif-fichier")
+public ResponseEntity<byte[]> voirJustificatif(@PathVariable Long id) {
+    try {
+        DemandeConge demande = demandeCongeRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Demande introuvable"));
+        String nomJustif = demande.getJustificatif();
+        if (nomJustif == null || nomJustif.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        java.nio.file.Path fichier = java.nio.file.Paths.get(dossierJustificatifs).resolve(nomJustif);
+        if (!java.nio.file.Files.exists(fichier)) {
+            return ResponseEntity.notFound().build();
+        }
+        byte[] contenu = java.nio.file.Files.readAllBytes(fichier);
+        // Type MIME selon l'extension
+        String type = "application/octet-stream";
+        String lower = nomJustif.toLowerCase();
+        if (lower.endsWith(".pdf")) type = "application/pdf";
+        else if (lower.endsWith(".png")) type = "image/png";
+        else if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) type = "image/jpeg";
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + nomJustif + "\"")
+            .contentType(MediaType.parseMediaType(type))
+            .body(contenu);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body(null);
+    }
+}
     
 }

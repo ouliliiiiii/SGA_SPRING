@@ -1,6 +1,7 @@
 package sga_backend.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import lombok.Data;
@@ -15,11 +16,15 @@ public class SoldeAjustementDTO {
     private BigDecimal nbCongesAcquis;
     private BigDecimal nbCongesReliquat;
     private BigDecimal nbCongesSupplementaire;
-    private BigDecimal nbJourSansSolde;
 
     // --- Champs calculés (lecture seule, renvoyés au frontend pour info) ---
     private BigDecimal nbJourPrisDeductible;
     private BigDecimal nbCongesEncours;
     private BigDecimal nbCongesEchus;
     private LocalDateTime dateDernierCalcul;
-}
+
+    private LocalDate dateDebut;
+    private LocalDate dateFin;
+    private String momentDebut;
+    private String momentFin;
+    }

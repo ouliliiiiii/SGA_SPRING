@@ -10,4 +10,5 @@ public interface TypeCongeRepository extends JpaRepository<TypeConge, Long> {
 
     // Types actifs uniquement (pour le formulaire de demande)
     List<TypeConge> findByActifTrue();
+    
 }

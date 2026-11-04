@@ -56,4 +56,6 @@ private Long idUnite;
     public void setNumeroDePoste(String numeroDePoste) { this.numeroDePoste = numeroDePoste; }
     public Long getIdPoste() { return idPoste; }
     public void setIdPoste(Long idPoste) { this.idPoste = idPoste; }
+
+    private LocalDate dateFinContrat;
 }

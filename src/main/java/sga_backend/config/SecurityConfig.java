@@ -60,7 +60,7 @@ public FilterRegistrationBean<JwtFilter> jwtFilterRegistration(JwtFilter filter)
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(
             "http://localhost:4200",
-            "http://10.100.227.144:4200"
+            "http://10.100.227.235:4200"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));

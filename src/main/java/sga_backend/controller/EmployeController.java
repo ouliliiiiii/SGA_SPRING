@@ -193,18 +193,7 @@ public ResponseEntity<byte[]> exporterEmployes(@RequestBody(required = false) Li
 
 @Autowired private ImportEmployeService importEmployeService;
  
-@PostMapping("/import")
-public ResponseEntity<?> importerEmployes(@RequestParam("fichier") MultipartFile fichier) {
-    try {
-        if (fichier.isEmpty()) {
-            return ResponseEntity.badRequest().body("Fichier vide");
-        }
-        ImportEmployeService.ResultatImport resultat = importEmployeService.importer(fichier);
-        return ResponseEntity.ok(resultat);
-    } catch (Exception e) {
-        return ResponseEntity.badRequest().body("Erreur lors de l'import : " + e.getMessage());
-    }
-}
+
  @PostMapping("/import/colonnes")
 public ResponseEntity<?> lireColonnes(@RequestParam("fichier") MultipartFile fichier) {
     try {

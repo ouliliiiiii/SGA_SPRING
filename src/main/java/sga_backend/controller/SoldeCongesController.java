@@ -11,11 +11,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import sga_backend.dto.SoldeAjustementDTO;
 import sga_backend.dto.SoldeRegularisationDTO;
 import sga_backend.service.SoldeCongesService;
+import sga_backend.dto.RegularisationDTO;
 
 @RestController
 @RequestMapping("/api/soldes")
@@ -29,6 +32,11 @@ public class SoldeCongesController {
     public ResponseEntity<String> recalculerTous() {
         soldeCongesService.recalculerTousLesSoldes();
         return ResponseEntity.ok("Recalcul des soldes effectué");
+    }
+    @PostMapping("/rattraper-jours-pris")
+    public ResponseEntity<String> rattraperJoursPris() {
+        soldeCongesService.rattraperJoursPris();
+        return ResponseEntity.ok("Jours pris recalculés à partir des congés validés");
     }
 
     // Recalcul du solde d'UN agent
@@ -48,11 +56,16 @@ public class SoldeCongesController {
         return soldeCongesService.listerPourRegularisation();
     }
 
-    // Ajustement manuel du solde d'un agent
+        // Ajustement manuel du solde d'un agent (régularisation d'une absence passée)
     @PutMapping("/{idAgent}")
-    public ResponseEntity<?> ajusterSolde(@PathVariable Long idAgent, @RequestBody SoldeAjustementDTO data) {
+    public ResponseEntity<?> ajusterSolde(
+            @PathVariable Long idAgent,
+            @RequestBody SoldeAjustementDTO data,
+            org.springframework.security.core.Authentication authentication) {
         try {
-            soldeCongesService.ajusterSolde(idAgent, data);
+            // Utilisateur connecté qui effectue la régularisation (son login, via le token)
+            String effectuePar = (authentication != null) ? authentication.getName() : "inconnu";
+            soldeCongesService.ajusterSolde(idAgent, data, effectuePar);
             return ResponseEntity.ok("Solde ajusté");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -73,5 +86,23 @@ public ResponseEntity<byte[]> exporterSoldes(@RequestBody(required = false) List
     } catch (Exception e) {
         return ResponseEntity.badRequest().body(null);
     }
+}
+
+@PostMapping("/regularisation/import")
+public ResponseEntity<?> importerRegularisations(
+        @RequestParam("fichier") MultipartFile fichier,
+        org.springframework.security.core.Authentication authentication) {
+    try {
+        if (fichier.isEmpty()) return ResponseEntity.badRequest().body("Fichier vide");
+        String effectuePar = (authentication != null) ? authentication.getName() : "inconnu";
+        return ResponseEntity.ok(soldeCongesService.importerRegularisations(fichier, effectuePar));
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body("Erreur lors de l'import : " + e.getMessage());
+    }
+}
+
+@GetMapping("/regularisation/historique")
+public List<RegularisationDTO> historiqueRegularisations() {
+    return soldeCongesService.listerRegularisations();
 }
 }

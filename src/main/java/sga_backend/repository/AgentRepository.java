@@ -45,4 +45,7 @@ public interface AgentRepository extends JpaRepository<Agent, Long> {
            "WHERE u.profil.code = :codeProfil " +
            "AND (:idExclu IS NULL OR a.id <> :idExclu)")
     long compterParProfil(String codeProfil, Long idExclu);
+
+        Optional<Agent> findByMatricule(String matricule);
+        Optional<Agent> findByEmail(String email);
 }

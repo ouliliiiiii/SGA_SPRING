@@ -33,3 +33,5 @@ databaseChangeLog:
       file: db/changelog/changes/016-create-table-notification.yaml
   - include:
       file: db/changelog/changes/017-add-token-actif-utilisateur.yaml
+  - include:
+      file: db/changelog/changes/018-create-table-regularisation.yaml

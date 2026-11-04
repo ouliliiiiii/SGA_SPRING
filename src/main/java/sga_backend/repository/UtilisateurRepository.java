@@ -15,6 +15,5 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long> 
     boolean existsByLogin(String login);
 
 // Ajouter cette méthode
-Optional<Utilisateur> findByAgentId(Long idAgent);
-
+Optional<Utilisateur> findByAgentId(Long idAgent); 
 }

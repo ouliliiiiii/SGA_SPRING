@@ -57,28 +57,30 @@ public class EscaladeService {
     private void escalader(EtapeValidation etape) {
         DemandeConge demande = etape.getDemande();
 
-        // 1. Marquer l'étape comme ESCALADEE (sautée automatiquement)
-        etape.setStatut("ESCALADEE");
-        etape.setDateAction(LocalDateTime.now());
-        etape.setCommentaire("Étape escaladée automatiquement après " + DELAI_HEURES + "h sans traitement.");
-        etapeValidationRepository.save(etape);
-
-        // 2. Trouver l'étape suivante et l'activer
+        // Trouver l'étape suivante EN_ATTENTE (s'il en existe une)
         List<EtapeValidation> toutes =
             etapeValidationRepository.findByDemandeIdOrderByOrdreAsc(demande.getId());
         EtapeValidation suivante = toutes.stream()
             .filter(e -> e.getOrdre() > etape.getOrdre() && "EN_ATTENTE".equals(e.getStatut()))
             .findFirst().orElse(null);
 
-        if (suivante != null) {
-            // Il reste des étapes : activer la suivante
-            suivante.setDateActivation(LocalDateTime.now());
-            etapeValidationRepository.save(suivante);
-            demande.setStatut("EN_COURS");
-        } else {
-            // C'était la dernière étape : la demande est validée
-            demande.setStatut("VALIDEE");
+        // ⚠️ Si c'est la DERNIÈRE étape (pas de suivante) → NE PAS escalader.
+        // L'étape terminale (ex : le RH) reste EN_ATTENTE jusqu'à validation humaine.
+        // L'escalade automatique ne saute QUE les étapes intermédiaires.
+        if (suivante == null) {
+            return;
         }
+
+        // 1. Marquer l'étape courante comme ESCALADEE (sautée automatiquement)
+        etape.setStatut("ESCALADEE");
+        etape.setDateAction(LocalDateTime.now());
+        etape.setCommentaire("Étape escaladée automatiquement après " + DELAI_HEURES + "h sans traitement.");
+        etapeValidationRepository.save(etape);
+
+        // 2. Activer l'étape suivante
+        suivante.setDateActivation(LocalDateTime.now());
+        etapeValidationRepository.save(suivante);
+        demande.setStatut("EN_COURS");
         demandeCongeRepository.save(demande);
 
         // 3. Notifier tout le monde concerné
@@ -198,5 +200,5 @@ public class EscaladeService {
               <tr><td style="padding:4px 0;color:#999;">Durée</td><td style="padding:4px 0;font-weight:600;">%s jour(s)</td></tr>
             </table>
             """.formatted(agent, type, dateCreation, debut, fin, d.getNombreJours());
-    }   
+    }
 }

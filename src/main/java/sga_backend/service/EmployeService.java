@@ -61,8 +61,9 @@ public class EmployeService {
     @Autowired private UniteRepository uniteRepository;
     @Autowired private PosteRepository posteRepository;
     @Autowired private EmailService emailService;
-   
-    @Value("${sga.app.url:http://192.168.1.169:4200}")
+    @Autowired private SoldeCongesService soldeCongesService;
+
+    @Value("${sga.app.url:http://localhost:4200}")
     private String appUrl;
 
     @Value("${spring.mail.username}")
@@ -98,11 +99,13 @@ public class EmployeService {
         agent.setEmailPersonnel(request.getEmailPersonnel());
         agent.setCni(request.getCni());
         agent.setDateEmbauche(request.getDateEmbauche());
+        agent.setDateFinContrat(request.getDateFinContrat());
         agent.setAdresse1(request.getAdresse1());
         agent.setAdresse2(request.getAdresse2());
         agent.setVille(request.getVille());
         agent.setSexe(request.getSexe() != null ? request.getSexe() : null);
         agent.setStatut(request.getStatut() != null ? request.getStatut() : "ACTIF");
+        agent.setDateCreation(java.time.LocalDateTime.now());
         agent.setTypeContrat("CDI");
         agent.setNumeroDePoste(request.getNumeroDePoste());
 
@@ -191,7 +194,14 @@ public class EmployeService {
 
         Utilisateur utilisateurSauvegarde = utilisateurRepository.save(utilisateur);
 
-        // ---- ÉTAPE 5 : Email ----
+        // ---- ÉTAPE 5 : Calcul automatique du solde ----
+        // Recharge l'agent AVEC ses enfants (déjà sauvegardés) pour un calcul correct
+        // des congés supplémentaires, puis crée/calcule son solde automatiquement.
+        Agent agentComplet = agentRepository.findByIdWithEnfants(agentSauvegarde.getId())
+            .orElse(agentSauvegarde);
+        soldeCongesService.recalculerSoldeAgent(agentComplet);
+
+        // ---- ÉTAPE 6 : Email ----
         envoyerEmailBienvenue(request.getEmail(), request.getNom(), request.getPrenom(), motDePasseGenere);
 
         return utilisateurSauvegarde;
@@ -215,10 +225,12 @@ public class EmployeService {
         agent.setTelephone(request.getTelephone());
         agent.setNumeroDePoste(request.getNumeroDePoste());
         agent.setEmailPersonnel(request.getEmailPersonnel());
+         agent.setEmail(request.getEmail());
         agent.setAdresse1(request.getAdresse1());
         agent.setAdresse2(request.getAdresse2());
         agent.setVille(request.getVille());
         agent.setDateEmbauche(request.getDateEmbauche());
+        agent.setDateFinContrat(request.getDateFinContrat());
         agent.setStatut(request.getStatut() != null ? request.getStatut() : "ACTIF");
 
         // ---- Poste occupé (intitulé) ----
@@ -273,23 +285,51 @@ public class EmployeService {
         // ---- Vérifier l'unicité du responsable (en excluant l'agent lui-même) ----
         verifierUniciteResponsable(codeProfilAgent, request.getIdUnite(), request.getIdDirection(), id);
 
-        // ---- 4) Profil (sur le compte utilisateur lié) ----
-        if (request.getIdProfil() != null) {
-            utilisateurRepository.findByAgentId(id).ifPresent(u -> {
+             // ---- 4) Compte utilisateur lié : nom, prénom + profil ----
+               // ---- 4) Compte utilisateur lié : nom, prénom, login (= email) + profil ----
+        utilisateurRepository.findByAgentId(id).ifPresent(u -> {
+            u.setNom(request.getNom());
+            u.setPrenom(request.getPrenom());
+
+            // Le login EST l'email professionnel : on le garde synchronisé
+            String nouvelEmail = request.getEmail();
+            if (nouvelEmail != null && !nouvelEmail.isBlank()
+                    && !nouvelEmail.equalsIgnoreCase(u.getLogin())) {
+
+                // Vérifier qu'aucun AUTRE compte n'utilise déjà ce login
+                utilisateurRepository.findByLogin(nouvelEmail).ifPresent(autre -> {
+                    if (!autre.getId().equals(u.getId())) {
+                        throw new RuntimeException("Cet email est déjà utilisé par un autre compte");
+                    }
+                });
+                // Vérifier qu'aucun AUTRE agent n'utilise déjà cet email pro
+                agentRepository.findByEmail(nouvelEmail).ifPresent(autreAgent -> {
+                    if (!autreAgent.getId().equals(id)) {
+                        throw new RuntimeException("Cet email professionnel est déjà utilisé par un autre employé");
+                    }
+                });
+
+                u.setLogin(nouvelEmail);
+            }
+
+            if (request.getIdProfil() != null) {
                 profilRepository.findById(request.getIdProfil()).ifPresent(u::setProfil);
-                utilisateurRepository.save(u);
-            });
-        }
+            }
+
+            utilisateurRepository.save(u);
+        });
 
         // ---- 5) Enfants ----
         synchroniserEnfants(agent, request.getEnfants());
 
-        // ---- 6) Solde ----
-        if (request.getSolde() != null) {
-            ajusterSolde(agent, request.getSolde());
-        }
-
         agentRepository.save(agent);
+
+        // ---- 6) Recalcul automatique du solde ----
+        // La date d'embauche ou les enfants ont pu changer, ce qui modifie l'ancienneté,
+        // le supplément et les échus. Le solde (onglet lecture seule côté front) est donc
+        // toujours recalculé automatiquement ici.
+        Agent agentComplet = agentRepository.findByIdWithEnfants(id).orElse(agent);
+        soldeCongesService.recalculerSoldeAgent(agentComplet);
 
         return toDto(agentRepository.findByIdWithEnfants(id).orElse(agent));
     }
@@ -338,24 +378,6 @@ public class EmployeService {
 
         // c) Recalcul du nombre d'enfants
         agent.setNbEnfants(enfantAgentRepository.findByAgentId(agent.getId()).size());
-    }
-
-    // ---- Ajustement manuel du solde (upsert) ----
-    private void ajusterSolde(Agent agent, SoldeAjustementDTO dto) {
-        SoldeConges solde = soldeCongesRepository.findByAgentId(agent.getId())
-            .orElseGet(() -> {
-                SoldeConges s = new SoldeConges();
-                s.setAgent(agent);
-                return s;
-            });
-
-        if (dto.getNbCongesAcquis() != null)         solde.setNbCongesAcquis(dto.getNbCongesAcquis());
-        if (dto.getNbCongesReliquat() != null)       solde.setNbCongesReliquat(dto.getNbCongesReliquat());
-        if (dto.getNbCongesSupplementaire() != null) solde.setNbCongesSupplementaire(dto.getNbCongesSupplementaire());
-        if (dto.getNbJourSansSolde() != null)        solde.setNbJourSansSolde(dto.getNbJourSansSolde());
-
-        solde.setDateMaj(LocalDateTime.now());
-        soldeCongesRepository.save(solde);
     }
 
     // ============================================
@@ -412,6 +434,7 @@ public class EmployeService {
         dto.setPrenom(agent.getPrenom());
         dto.setDateNaissance(agent.getDateNaissance());
         dto.setDateEmbauche(agent.getDateEmbauche());
+        dto.setDateFinContrat(agent.getDateFinContrat());
         dto.setCni(agent.getCni());
         dto.setSexe(agent.getSexe());
         dto.setTelephone(agent.getTelephone());
@@ -425,6 +448,7 @@ public class EmployeService {
         dto.setVille(agent.getVille());
         dto.setStatut(agent.getStatut());
         dto.setNbEnfants(agent.getNbEnfants());
+        dto.setDateCreation(agent.getDateCreation());
 
         // Référentiels en IDs plats + libellés
 
@@ -490,7 +514,6 @@ if (agent.getUnite() != null) {
                 sdto.setNbCongesAcquis(s.getNbCongesAcquis());
                 sdto.setNbCongesReliquat(s.getNbCongesReliquat());
                 sdto.setNbCongesSupplementaire(s.getNbCongesSupplementaire());
-                sdto.setNbJourSansSolde(s.getNbJourSansSolde());
                 sdto.setNbJourPrisDeductible(s.getNbJourPrisDeductible());
                 sdto.setNbCongesEncours(s.getNbCongesEncours());
                 sdto.setNbCongesEchus(s.getNbCongesEchus());
@@ -523,7 +546,7 @@ if (agent.getUnite() != null) {
 // ============================================================
 
 
-
+@Transactional(readOnly = true)
 public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
 
    List<Agent> agents;
@@ -532,6 +555,11 @@ public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
     } else {
         agents = agentRepository.findAll();  // tous si aucune sélection
     }
+
+            int maxEnfants = agents.stream()
+            .mapToInt(a -> a.getEnfants() != null ? a.getEnfants().size() : 0)
+            .max()
+            .orElse(0);
 
     try (XSSFWorkbook workbook = new XSSFWorkbook();
          ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -548,8 +576,8 @@ public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
         headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         headerStyle.setAlignment(HorizontalAlignment.CENTER);
 
-        // ===== En-têtes de colonnes =====
-        String[] entetes = {
+             // ===== En-têtes de colonnes =====
+        List<String> entetesList = new ArrayList<>(List.of(
             "Matricule", "Nom", "Prénom", "Date naissance", "Sexe", "CNI",
             "Date embauche", "Type contrat", "Poste",
             "Direction", "Division", "Lieu de travail", "Fonction", "Catégorie socio-pro",
@@ -557,7 +585,14 @@ public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
             "Tél. personnel", "Email personnel", "Email pro (login)",
             "Adresse 1", "Adresse 2", "Ville", "Nb enfants",
             "Congés acquis", "Reliquat", "Jours pris", "En cours", "Échus"
-        };
+        ));
+
+        for (int k = 1; k <= maxEnfants; k++) {
+            entetesList.add("Enfant" + k + "_Prenom");
+            entetesList.add("Enfant" + k + "_DateNaissance");
+        }
+
+        String[] entetes = entetesList.toArray(new String[0]);
 
         Row ligneEntete = sheet.createRow(0);
         for (int i = 0; i < entetes.length; i++) {
@@ -584,11 +619,11 @@ public byte[] genererExcelEmployes(List<Long> ids) throws Exception{
 
             row.createCell(c++).setCellValue(a.getDirection() != null ? nz(a.getDirection().getLibelle()) : "");
             row.createCell(c++).setCellValue(a.getUnite() != null ? nz(a.getUnite().getLibelle()) : "");
-String lieu = "";
-if (a.getUnite() != null && a.getUnite().getLieuTravail() != null) {
-    lieu = nz(a.getUnite().getLieuTravail().getLibelle());
-}
-row.createCell(c++).setCellValue(lieu);            row.createCell(c++).setCellValue(a.getFonction() != null ? nz(a.getFonction().getLibelle()) : "");
+            String lieu = "";
+            if (a.getUnite() != null && a.getUnite().getLieuTravail() != null) {
+                lieu = nz(a.getUnite().getLieuTravail().getLibelle());
+            }
+            row.createCell(c++).setCellValue(lieu);            row.createCell(c++).setCellValue(a.getFonction() != null ? nz(a.getFonction().getLibelle()) : "");
             row.createCell(c++).setCellValue(a.getCategorieSocioPro() != null ? nz(a.getCategorieSocioPro().getLibelle()) : "");
 
             row.createCell(c++).setCellValue(nz(a.getStatut()));
@@ -604,7 +639,8 @@ row.createCell(c++).setCellValue(lieu);            row.createCell(c++).setCellVa
             row.createCell(c++).setCellValue(nz(a.getAdresse1()));
             row.createCell(c++).setCellValue(nz(a.getAdresse2()));
             row.createCell(c++).setCellValue(nz(a.getVille()));
-            row.createCell(c++).setCellValue(a.getNbEnfants() != null ? a.getNbEnfants() : 0);
+            int nbEnfantsReel = (a.getEnfants() != null) ? a.getEnfants().size() : 0;
+            row.createCell(c++).setCellValue(nbEnfantsReel);
 
             // Solde
             SoldeConges s = soldeCongesRepository.findByAgentId(a.getId()).orElse(null);
@@ -613,6 +649,18 @@ row.createCell(c++).setCellValue(lieu);            row.createCell(c++).setCellVa
             row.createCell(c++).setCellValue(s != null && s.getNbJourPrisDeductible() != null ? s.getNbJourPrisDeductible().doubleValue() : 0);
             row.createCell(c++).setCellValue(s != null && s.getNbCongesEncours() != null ? s.getNbCongesEncours().doubleValue() : 0);
             row.createCell(c++).setCellValue(s != null && s.getNbCongesEchus() != null ? s.getNbCongesEchus().doubleValue() : 0);
+            // ===== Enfants (nombre dynamique) =====
+            List<EnfantAgent> enfants = (a.getEnfants() != null) ? a.getEnfants() : new ArrayList<>();
+            for (int k = 0; k < maxEnfants; k++) {
+                if (k < enfants.size()) {
+                    EnfantAgent enf = enfants.get(k);
+                    row.createCell(c++).setCellValue(nz(enf.getPrenom()));
+                    row.createCell(c++).setCellValue(enf.getDateNaissance() != null ? enf.getDateNaissance().toString() : "");
+                } else {
+                    row.createCell(c++).setCellValue("");
+                    row.createCell(c++).setCellValue("");
+                }
+            }
         }
 
         // Ajuste la largeur des colonnes

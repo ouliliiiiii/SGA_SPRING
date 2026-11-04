@@ -15,6 +15,7 @@ public class AgentDTO {
     private String prenom;
     private LocalDate dateNaissance;
     private LocalDate dateEmbauche;
+    private LocalDate dateFinContrat;
     private String cni;
     private String sexe;
 
@@ -31,6 +32,8 @@ public class AgentDTO {
 
     // STATUT
     private String statut;
+
+    private java.time.LocalDateTime dateCreation;   // ← AJOUTER
 
     // LOCALISATION / RÉFÉRENTIELS — exposés en IDs plats (évite les boucles de sérialisation JPA)
     private Long idLieuTravail;

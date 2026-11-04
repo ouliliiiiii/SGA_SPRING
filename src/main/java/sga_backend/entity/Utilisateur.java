@@ -45,8 +45,8 @@ public class Utilisateur {
     private String motDePasse;
 
    @OneToOne(fetch = FetchType.LAZY)
-@JoinColumn(name = "id_agent")
-private Agent agent;
+    @JoinColumn(name = "id_agent")
+    private Agent agent;
 
      @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_profil")
@@ -54,11 +54,11 @@ private Agent agent;
     private Profil profil;
 
     // Code de réinitialisation du mot de passe (6 chiffres) et son expiration
-@Column(length = 6)
-private String codeReset;
+        @Column(length = 6)
+        private String codeReset;
 
-private LocalDateTime codeResetExpiration;
+        private LocalDateTime codeResetExpiration;
 
- @Column(name = "token_actif", length = 500)
-    private String tokenActif;
+        @Column(name = "token_actif", length = 500)
+            private String tokenActif;
 }

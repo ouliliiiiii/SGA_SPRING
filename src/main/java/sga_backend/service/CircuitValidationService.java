@@ -56,8 +56,9 @@ public class CircuitValidationService {
 
       // ===== CAS SPÉCIAUX DU SOMMET =====
         if ("ADMIN".equalsIgnoreCase(codeProfilAgent)) {
-            // ADMIN → DAFCH
+            // Demande du RH (ADMIN) : DAF valide, puis retour au RH pour validation finale
             etapes.add(creerEtape(demande, 1, "DAF", "Directeur de l'Administration, des Finances et du Capital humain", null, null));
+            etapes.add(creerEtape(demande, 2, "ADMIN", "Direction des Ressources Humaines (RH)", null, null));
             etapeValidationRepository.saveAll(etapes);
             return;
         }

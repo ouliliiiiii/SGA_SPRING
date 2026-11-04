@@ -57,7 +57,7 @@ public class Agent {
 
 
    @Column(name = "numero_de_poste")
-private String numeroDePoste;
+    private String numeroDePoste;
 
     @Column(name = "type_contrat", length = 20, nullable = false)
     private String typeContrat = "CDI";
@@ -124,5 +124,6 @@ private String numeroDePoste;
     @JoinColumn(name = "id_poste")
     private Poste posteOccupe;
 
+     
 
 }

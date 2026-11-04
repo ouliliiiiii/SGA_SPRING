@@ -49,4 +49,11 @@ public class DemandeCongeDTO {
     private String profilAgent;
     private String posteAgent;
     private String typeLieuAgent;   // SIEGE ou REGIONAL
+
+
+  private java.time.LocalDate dateEmbaucheAgent;
+  private String typeContratAgent;
+  private java.time.LocalDate dateFinContratAgent;
+  private Integer nbEnfantsAgent;
+
 }
