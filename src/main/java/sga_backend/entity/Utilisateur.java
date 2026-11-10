@@ -60,5 +60,8 @@ public class Utilisateur {
         private LocalDateTime codeResetExpiration;
 
         @Column(name = "token_actif", length = 500)
-            private String tokenActif;
+        private String tokenActif;
+
+        @Column(name = "est_admin", nullable = false)
+        private Boolean estAdmin = false;
 }

@@ -19,7 +19,9 @@ import sga_backend.dto.UtilisateurResponse;
 import sga_backend.entity.Utilisateur;
 import sga_backend.repository.UtilisateurRepository;
 import sga_backend.service.AuthService;
+import sga_backend.service.JournalService;
 import sga_backend.service.JwtService;
+
  
    
 
@@ -33,6 +35,9 @@ public class AuthController {
     @Autowired
     private AuthService authService;
     @Autowired private JwtService jwtService;
+
+    @Autowired
+private JournalService journalService;
 
     // ============================================
     // ENDPOINT : LOGIN
@@ -55,6 +60,14 @@ public class AuthController {
 
             UtilisateurResponse reponse = UtilisateurResponse.depuis(utilisateur);
             reponse.setToken(token);
+
+            journalService.enregistrerPour(
+                utilisateur.getLogin(),
+                "CONNEXION",
+                "Connexion à l'application",
+                null,   // cible : rien de particulier pour une connexion
+                null    // details
+            );
 
             return ResponseEntity.ok(reponse);
         } catch (RuntimeException e) {

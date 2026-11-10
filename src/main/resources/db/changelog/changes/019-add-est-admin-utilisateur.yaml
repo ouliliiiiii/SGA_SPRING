@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 019-add-est-admin-utilisateur
+      author: mme niane
+      changes:
+        - addColumn:
+            tableName: utilisateur
+            columns:
+              - column:
+                  name: est_admin
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

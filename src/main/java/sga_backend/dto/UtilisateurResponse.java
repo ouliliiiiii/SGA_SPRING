@@ -14,16 +14,20 @@ public class UtilisateurResponse {
     private String codeProfil;
     private String libelleProfil;
 
+    // Droit d'administration (independant du profil metier)
+    private Boolean estAdmin;
+
     // Infos de l'agent lié (utiles pour le filtrage par direction)
     private Long idAgent;
     private Long idDirection;
     private String libelleDirection;
     private Long idUnite;
     private String libelleUnite;   // ex. "Division Réseaux et Supports"
-    private String token;   // ← AJOUTER : le jeton JWT
+    private String token;   // le jeton JWT
 
     public UtilisateurResponse(Long id, String nom, String prenom, String login,
                                String statut, String codeProfil, String libelleProfil,
+                               Boolean estAdmin,
                                Long idAgent, Long idDirection, String libelleDirection,
                                Long idUnite, String libelleUnite) {
         this.id = id;
@@ -33,6 +37,7 @@ public class UtilisateurResponse {
         this.statut = statut;
         this.codeProfil = codeProfil;
         this.libelleProfil = libelleProfil;
+        this.estAdmin = estAdmin;
         this.idAgent = idAgent;
         this.idDirection = idDirection;
         this.libelleDirection = libelleDirection;
@@ -73,6 +78,7 @@ public class UtilisateurResponse {
             u.getStatut(),
             codeProfil,
             libelleProfil,
+            Boolean.TRUE.equals(u.getEstAdmin()),   // droit admin (false si null)
             idAgent,
             idDirection,
             libelleDirection,

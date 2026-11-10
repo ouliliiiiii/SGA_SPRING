@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 023-create-table-journal-activite
+      author: mme niane
+      changes:
+        - createTable:
+            tableName: journal_activite
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # Qui a fait l'action (on garde le login + nom en texte pour que
+              # le journal reste lisible meme si l'utilisateur est supprime plus tard)
+              - column:
+                  name: id_utilisateur
+                  type: BIGINT
+              - column:
+                  name: auteur
+                  type: VARCHAR(200)
+              - column:
+                  name: auteur_login
+                  type: VARCHAR(150)
+              # Type d'action : CONNEXION, CREATION_EMPLOYE, VALIDATION_DEMANDE, etc.
+              - column:
+                  name: action
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+              # Libelle lisible de l'action (ex. "Validation d'une demande")
+              - column:
+                  name: libelle_action
+                  type: VARCHAR(150)
+              # Sur quoi porte l'action (ex. "Demande de FALL Moussa")
+              - column:
+                  name: cible
+                  type: VARCHAR(300)
+              # Details complementaires (optionnel)
+              - column:
+                  name: details
+                  type: VARCHAR(500)
+              - column:
+                  name: date_heure
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: journal_activite
+            indexName: idx_journal_date
+            columns:
+              - column:
+                  name: date_heure
+        - createIndex:
+            tableName: journal_activite
+            indexName: idx_journal_action
+            columns:
+              - column:
+                  name: action

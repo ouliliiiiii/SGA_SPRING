@@ -58,10 +58,10 @@ public class SoldeCongesService {
     @Autowired private RegularisationRepository regularisationRepository;
     @Autowired private DemandeCongeRepository demandeCongeRepository;
 
-    // 2 jours ouvrables par mois de service 
+    // 2 jours ouvrables par mois de service
     private static final BigDecimal JOURS_PAR_MOIS = BigDecimal.valueOf(2);
 
-    // Droit annuel complet 
+    // Droit annuel complet
     private static final BigDecimal JOURS_PAR_AN = BigDecimal.valueOf(24);
 
     // Période de référence : 12 mois
@@ -69,8 +69,7 @@ public class SoldeCongesService {
 
     // ============================================================
     // JOB AUTOMATIQUE
-    // PROD : "0 0 2 * * *" (tous les jours à 2h)
-    // TEST : "0 0 2 * * *" (toutes les minutes)
+    // PROD : "0 0 0 * * *" (tous les jours à minuit)
     // ============================================================
     @Scheduled(cron = "0 0 0 * * *")
     @Transactional
@@ -85,8 +84,8 @@ public class SoldeCongesService {
     }
 
     @Transactional
-   public boolean recalculerSoldeAgent(Agent agentParam) {
-        // Recharger l'agent AVEC ses enfants (pour le calcul des congés supplémentaires)
+    public boolean recalculerSoldeAgent(Agent agentParam) {
+        // Recharger l'agent AVEC ses enfants (pour les jours mères)
         Agent agent = agentRepository.findByIdWithEnfants(agentParam.getId()).orElse(agentParam);
 
         if (agent.getDateEmbauche() == null) return false;
@@ -101,44 +100,40 @@ public class SoldeCongesService {
 
         LocalDate aujourdhui = LocalDate.now();
 
-        // --- Mois de service écoulés ---
-        long moisDeService = ChronoUnit.MONTHS.between(agent.getDateEmbauche(), aujourdhui);
-        if (moisDeService < 0) moisDeService = 0;
-
-        // --- Années complètes d'ancienneté (paliers annuels) ---
+        // --- Années complètes d'ancienneté, plafonnées à 3 ---
         long anneesCompletes = ChronoUnit.YEARS.between(agent.getDateEmbauche(), aujourdhui);
         if (anneesCompletes < 0) anneesCompletes = 0;
+        long anneesRetenues = Math.min(anneesCompletes, 3);
 
-        // --- Congés acquis : 2 jours par mois ---
-        BigDecimal joursAcquis = JOURS_PAR_MOIS.multiply(BigDecimal.valueOf(moisDeService));
-        solde.setNbCongesAcquis(joursAcquis);
+        // --- Jours supplémentaires (ancienneté + mères), ajoutés au quota de base de 24 ---
+        BigDecimal joursSupp = calculerCongesSupplementaires(agent);
 
-        // --- Jours déjà pris (déductibles) ---
+        // --- Jours pris (déductibles) ---
         BigDecimal joursPris = solde.getNbJourPrisDeductible() != null
             ? solde.getNbJourPrisDeductible()
             : BigDecimal.ZERO;
 
-        // --- Congés supplémentaires (ancienneté + mères) ---
-        BigDecimal congesSupp = calculerCongesSupplementaires(agent);
-        solde.setNbCongesSupplementaire(congesSupp);
+        // === CONGÉS ACQUIS = (24 + jours supp) × min(années, 3) ===
+        BigDecimal baseAnnuelle = BigDecimal.valueOf(24).add(joursSupp);
+        BigDecimal congesAcquis = baseAnnuelle.multiply(BigDecimal.valueOf(anneesRetenues));
+        solde.setNbCongesAcquis(congesAcquis);
 
-        // --- Congés échus = (années complètes × 24) − jours pris, puis plafonnés ---
-        BigDecimal joursEchusBruts = JOURS_PAR_AN.multiply(BigDecimal.valueOf(anneesCompletes));
-        BigDecimal joursEchus = joursEchusBruts.subtract(joursPris);
-        if (joursEchus.compareTo(BigDecimal.ZERO) < 0) {
-            joursEchus = BigDecimal.ZERO;
-        }
-        // Plafond : (24 × 3) + congés supplémentaires  (VISION A : le supplément est INCLUS dans les échus)
-        BigDecimal plafondEchus = JOURS_PAR_AN.multiply(BigDecimal.valueOf(3)).add(congesSupp);
-        if (joursEchus.compareTo(plafondEchus) > 0) {
-            joursEchus = plafondEchus;
-        }
-        solde.setNbCongesEchus(joursEchus);
+        // On conserve le champ "supplémentaire" pour l'affichage
+        solde.setNbCongesSupplementaire(joursSupp);
 
-        // --- Reliquat = congés échus (qui contiennent DÉJÀ le supplément) − jours pris ---
-        // On ne rajoute PAS le supplément ici (il est déjà dans joursEchus), sinon double comptage.
-        // Le reliquat PEUT être négatif (congés pris au-delà du droit), on ne le force pas à 0.
-        BigDecimal reliquat = joursEchus.subtract(joursPris);
+        // === CONGÉS ÉCHUS = acquis − pris ===
+        BigDecimal congesEchus = congesAcquis.subtract(joursPris);
+        if (congesEchus.compareTo(BigDecimal.ZERO) < 0) {
+            congesEchus = BigDecimal.ZERO;
+        }
+        solde.setNbCongesEchus(congesEchus);
+
+        // === CONGÉS EN COURS = 2 × mois écoulés depuis le DERNIER anniversaire d'embauche (sans supplément) ===
+        BigDecimal congesEnCours = BigDecimal.valueOf(2L * moisDepuisDernierAnniversaire(agent.getDateEmbauche(), aujourdhui));
+        solde.setNbCongesEncours(congesEnCours);
+
+        // === RELIQUAT = échus + en cours ===
+        BigDecimal reliquat = congesEchus.add(congesEnCours);
         solde.setNbCongesReliquat(reliquat);
 
         solde.setDateDernierCalcul(LocalDateTime.now());
@@ -148,55 +143,64 @@ public class SoldeCongesService {
         return true;
     }
 
+    // Nombre de mois complets écoulés depuis le dernier anniversaire d'embauche jusqu'à la date donnée.
+    // Ex : embauche le 15/03, on est le 05/11 -> dernier anniversaire = 15/03 de cette année -> ~7 mois.
+    private long moisDepuisDernierAnniversaire(LocalDate dateEmbauche, LocalDate date) {
+        if (dateEmbauche == null || date == null) return 0;
+        // Dernier anniversaire d'embauche <= date
+        LocalDate anniversaire = dateEmbauche.withYear(date.getYear());
+        if (anniversaire.isAfter(date)) {
+            anniversaire = anniversaire.minusYears(1);
+        }
+        long mois = ChronoUnit.MONTHS.between(anniversaire, date);
+        if (mois < 0) mois = 0;
+        if (mois > 12) mois = 12;
+        return mois;
+    }
 
     @Transactional
-public void rattraperJoursPris() {
-    List<Agent> agents = agentRepository.findAll();
-    for (Agent agent : agents) {
-        // Somme des jours des demandes VALIDEE déductibles de cet agent
-        BigDecimal totalPris = demandeCongeRepository
-            .findByAgentIdAndStatut(agent.getId(), "VALIDEE")
-            .stream()
-            .filter(d -> d.getTypeConge() != null
-                      && "DEDUCTIBLE".equalsIgnoreCase(d.getTypeConge().getCategorie()))
-            .map(d -> d.getNombreJours() != null ? d.getNombreJours() : BigDecimal.ZERO)
-            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    public void rattraperJoursPris() {
+        List<Agent> agents = agentRepository.findAll();
+        for (Agent agent : agents) {
+            // Somme des jours des demandes VALIDEE déductibles de cet agent
+            BigDecimal totalPris = demandeCongeRepository
+                .findByAgentIdAndStatut(agent.getId(), "VALIDEE")
+                .stream()
+                .filter(d -> d.getTypeConge() != null
+                          && "DEDUCTIBLE".equalsIgnoreCase(d.getTypeConge().getCategorie()))
+                .map(d -> d.getNombreJours() != null ? d.getNombreJours() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        soldeCongesRepository.findByAgentId(agent.getId()).ifPresent(solde -> {
-            solde.setNbJourPrisDeductible(totalPris);
-            soldeCongesRepository.save(solde);
-            recalculerSoldeAgent(agent);
-        });
+            soldeCongesRepository.findByAgentId(agent.getId()).ifPresent(solde -> {
+                solde.setNbJourPrisDeductible(totalPris);
+                soldeCongesRepository.save(solde);
+                recalculerSoldeAgent(agent);
+            });
+        }
     }
-}
 
-
-       public BigDecimal calculerEchusALaDate(Agent agentParam, LocalDate date) {
+    // Congés échus projetés à une date donnée (= acquis à cette date − jours déjà pris).
+    // Acquis = (24 + jours supp) × min(années d'ancienneté à cette date, 3).
+    public BigDecimal calculerEchusALaDate(Agent agentParam, LocalDate date) {
         if (agentParam == null || agentParam.getId() == null) return BigDecimal.ZERO;
 
-        // Recharger l'agent AVEC ses enfants (nécessaire à calculerCongesSupplementaires)
         Agent agent = agentRepository.findByIdWithEnfants(agentParam.getId()).orElse(agentParam);
-
-        if (agent.getDateEmbauche() == null) return BigDecimal.ZERO;
-        if (date == null) return BigDecimal.ZERO;
+        if (agent.getDateEmbauche() == null || date == null) return BigDecimal.ZERO;
 
         long anneesCompletes = ChronoUnit.YEARS.between(agent.getDateEmbauche(), date);
         if (anneesCompletes < 0) anneesCompletes = 0;
+        long anneesRetenues = Math.min(anneesCompletes, 3);
+
+        BigDecimal joursSupp = calculerCongesSupplementaires(agent);
+        BigDecimal baseAnnuelle = BigDecimal.valueOf(24).add(joursSupp);
+        BigDecimal acquis = baseAnnuelle.multiply(BigDecimal.valueOf(anneesRetenues));
 
         SoldeConges solde = soldeCongesRepository.findByAgentId(agent.getId()).orElse(null);
         BigDecimal joursPris = (solde != null && solde.getNbJourPrisDeductible() != null)
             ? solde.getNbJourPrisDeductible() : BigDecimal.ZERO;
 
-        BigDecimal echus = JOURS_PAR_AN.multiply(BigDecimal.valueOf(anneesCompletes)).subtract(joursPris);
-        if (echus.compareTo(BigDecimal.ZERO) < 0) {
-            echus = BigDecimal.ZERO;
-        }
-        // Plafond : (24 × 3) + congés supplémentaires  (VISION A : le supplément est INCLUS dans les échus)
-        BigDecimal supplement = calculerCongesSupplementaires(agent);
-        BigDecimal plafond = JOURS_PAR_AN.multiply(BigDecimal.valueOf(3)).add(supplement);
-        if (echus.compareTo(plafond) > 0) {
-            echus = plafond;
-        }
+        BigDecimal echus = acquis.subtract(joursPris);
+        if (echus.compareTo(BigDecimal.ZERO) < 0) echus = BigDecimal.ZERO;
         return echus;
     }
 
@@ -206,120 +210,112 @@ public void rattraperJoursPris() {
         LocalDate dateJouissance = agent.getDateEmbauche().plusMonths(MOIS_PERIODE_REFERENCE);
         return !dateDebutConge.isBefore(dateJouissance);
     }
-   
 
+    //=== Méthode : recalcul d'un seul agent ===
+    @Transactional
+    public void recalculerUnAgent(Long idAgent) {
+        Agent agent = agentRepository.findById(idAgent)
+            .orElseThrow(() -> new RuntimeException("Agent introuvable"));
+        recalculerSoldeAgent(agent);
+    }
 
-//=== Méthode : recalcul d'un seul agent ===
+    //=== Méthode : lister les agents avec leur solde (pour la page Régularisation) ===
+    public List<SoldeRegularisationDTO> listerPourRegularisation() {
+        List<SoldeRegularisationDTO> liste = new ArrayList<>();
 
-@Transactional
-public void recalculerUnAgent(Long idAgent) {
-    Agent agent = agentRepository.findById(idAgent)
-        .orElseThrow(() -> new RuntimeException("Agent introuvable"));
-    recalculerSoldeAgent(agent);
-}
+        for (Agent agent : agentRepository.findAll()) {
+            SoldeRegularisationDTO dto = new SoldeRegularisationDTO();
+            dto.setIdAgent(agent.getId());
+            dto.setMatricule(agent.getMatricule());
+            dto.setNom(agent.getNom());
+            dto.setPrenom(agent.getPrenom());
+            dto.setStatut(agent.getStatut());
+            dto.setDateEmbauche(agent.getDateEmbauche());
 
+            // Direction (lue directement sur l'agent)
+            if (agent.getDirection() != null) {
+                dto.setIdDirection(agent.getDirection().getId());
+                dto.setLibelleDirection(agent.getDirection().getLibelle());
+            }
+            // Division (unité)
+            if (agent.getUnite() != null) {
+                dto.setIdUniteo(agent.getUnite().getId());
+                dto.setLibelleUniteo(agent.getUnite().getLibelle());
+            }
 
-//=== Méthode : lister les agents avec leur solde (pour la page Régularisation) ===
+            // Solde
+            SoldeConges s = soldeCongesRepository.findByAgentId(agent.getId()).orElse(null);
+            if (s != null) {
+                dto.setNbCongesAcquis(s.getNbCongesAcquis());
+                dto.setNbCongesReliquat(s.getNbCongesReliquat());
+                dto.setNbCongesSupplementaire(s.getNbCongesSupplementaire());
+                dto.setNbJourPrisDeductible(s.getNbJourPrisDeductible());
+                dto.setNbCongesEncours(s.getNbCongesEncours());
+                dto.setNbCongesEchus(s.getNbCongesEchus());
+                dto.setNbJourSansSolde(s.getNbJourSansSolde());
+                dto.setDateDernierCalcul(s.getDateDernierCalcul());
+            }
 
-public List<SoldeRegularisationDTO> listerPourRegularisation() {
-    List<SoldeRegularisationDTO> liste = new ArrayList<>();
-
-    for (Agent agent : agentRepository.findAll()) {
-        SoldeRegularisationDTO dto = new SoldeRegularisationDTO();
-        dto.setIdAgent(agent.getId());
-        dto.setMatricule(agent.getMatricule());
-        dto.setNom(agent.getNom());
-        dto.setPrenom(agent.getPrenom());
-        dto.setStatut(agent.getStatut());
-        dto.setDateEmbauche(agent.getDateEmbauche());
-
-        // Direction (lue directement sur l'agent)
-        if (agent.getDirection() != null) {
-            dto.setIdDirection(agent.getDirection().getId());
-            dto.setLibelleDirection(agent.getDirection().getLibelle());
+            liste.add(dto);
         }
-        // Division (unité)
-        if (agent.getUnite() != null) {
-            dto.setIdUniteo(agent.getUnite().getId());
-            dto.setLibelleUniteo(agent.getUnite().getLibelle());
+        return liste;
+    }
+
+    @Transactional
+    public void ajusterSolde(Long idAgent, SoldeAjustementDTO data, String effectuePar) {
+        Agent agent = agentRepository.findById(idAgent)
+            .orElseThrow(() -> new RuntimeException("Agent introuvable"));
+
+        if (data.getDateDebut() == null || data.getDateFin() == null) {
+            throw new RuntimeException("Les dates de début et de fin sont obligatoires");
+        }
+        if (data.getDateFin().isBefore(data.getDateDebut())) {
+            throw new RuntimeException("La date de fin ne peut pas précéder la date de début");
         }
 
-        // Solde
-        SoldeConges s = soldeCongesRepository.findByAgentId(agent.getId()).orElse(null);
-        if (s != null) {
-            dto.setNbCongesAcquis(s.getNbCongesAcquis());
-            dto.setNbCongesReliquat(s.getNbCongesReliquat());
-            dto.setNbCongesSupplementaire(s.getNbCongesSupplementaire());
-            dto.setNbJourPrisDeductible(s.getNbJourPrisDeductible());
-            dto.setNbCongesEncours(s.getNbCongesEncours());
-            dto.setNbCongesEchus(s.getNbCongesEchus());
-            dto.setNbJourSansSolde(s.getNbJourSansSolde());
-            dto.setDateDernierCalcul(s.getDateDernierCalcul());
+        String momentDebut = data.getMomentDebut() != null ? data.getMomentDebut() : "JOURNEE";
+        String momentFin   = data.getMomentFin()   != null ? data.getMomentFin()   : "JOURNEE";
+
+        // Jours ouvrables (week-ends + fériés exclus)
+        BigDecimal nbJours = calculerNombreJours(
+            data.getDateDebut(), data.getDateFin(), true, momentDebut, momentFin);
+
+        if (nbJours.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("La période sélectionnée ne contient aucun jour ouvrable");
         }
 
-        liste.add(dto);
+        SoldeConges solde = soldeCongesRepository.findByAgentId(idAgent)
+            .orElseGet(() -> {
+                SoldeConges s = new SoldeConges();
+                s.setAgent(agent);
+                return s;
+            });
+
+        // On AJOUTE les jours régularisés aux jours déjà pris
+        BigDecimal prisActuel = (solde.getNbJourPrisDeductible() != null)
+            ? solde.getNbJourPrisDeductible() : BigDecimal.ZERO;
+        solde.setNbJourPrisDeductible(prisActuel.add(nbJours));
+        solde.setDateMaj(java.time.LocalDateTime.now());
+        soldeCongesRepository.save(solde);
+
+        // Historiser
+        Regularisation reg = new Regularisation();
+        reg.setAgent(agent);
+        reg.setDateDebut(data.getDateDebut());
+        reg.setDateFin(data.getDateFin());
+        reg.setMomentDebut(momentDebut);
+        reg.setMomentFin(momentFin);
+        reg.setNbJours(nbJours);
+        reg.setDateOperation(java.time.LocalDateTime.now());
+        reg.setEffectuePar(effectuePar);
+        regularisationRepository.save(reg);
+
+        // Recalcul du solde
+        recalculerSoldeAgent(agent);
     }
-    return liste;
-}
 
-
-
-
-@Transactional
-public void ajusterSolde(Long idAgent, SoldeAjustementDTO data, String effectuePar) {
-    Agent agent = agentRepository.findById(idAgent)
-        .orElseThrow(() -> new RuntimeException("Agent introuvable"));
-
-    if (data.getDateDebut() == null || data.getDateFin() == null) {
-        throw new RuntimeException("Les dates de début et de fin sont obligatoires");
-    }
-    if (data.getDateFin().isBefore(data.getDateDebut())) {
-        throw new RuntimeException("La date de fin ne peut pas précéder la date de début");
-    }
-
-    String momentDebut = data.getMomentDebut() != null ? data.getMomentDebut() : "JOURNEE";
-    String momentFin   = data.getMomentFin()   != null ? data.getMomentFin()   : "JOURNEE";
-
-    // Jours ouvrables (week-ends + fériés exclus)
-    BigDecimal nbJours = calculerNombreJours(
-        data.getDateDebut(), data.getDateFin(), true, momentDebut, momentFin);
-
-    if (nbJours.compareTo(BigDecimal.ZERO) <= 0) {
-        throw new RuntimeException("La période sélectionnée ne contient aucun jour ouvrable");
-    }
-
-    SoldeConges solde = soldeCongesRepository.findByAgentId(idAgent)
-        .orElseGet(() -> {
-            SoldeConges s = new SoldeConges();
-            s.setAgent(agent);
-            return s;
-        });
-
-    // On AJOUTE les jours régularisés aux jours déjà pris
-    BigDecimal prisActuel = (solde.getNbJourPrisDeductible() != null)
-        ? solde.getNbJourPrisDeductible() : BigDecimal.ZERO;
-    solde.setNbJourPrisDeductible(prisActuel.add(nbJours));
-    solde.setDateMaj(java.time.LocalDateTime.now());
-    soldeCongesRepository.save(solde);
-
-    // Historiser
-    Regularisation reg = new Regularisation();
-    reg.setAgent(agent);
-    reg.setDateDebut(data.getDateDebut());
-    reg.setDateFin(data.getDateFin());
-    reg.setMomentDebut(momentDebut);
-    reg.setMomentFin(momentFin);
-    reg.setNbJours(nbJours);
-    reg.setDateOperation(java.time.LocalDateTime.now());
-    reg.setEffectuePar(effectuePar);
-    regularisationRepository.save(reg);
-
-    // Recalcul du solde
-    recalculerSoldeAgent(agent);
-}
-
-public BigDecimal calculerNombreJours(LocalDate debut, LocalDate fin, boolean joursOuvres,
-                                          String momentDebut, String momentFin) {
+    public BigDecimal calculerNombreJours(LocalDate debut, LocalDate fin, boolean joursOuvres,
+                                              String momentDebut, String momentFin) {
         int compteur = 0;
         LocalDate jour = debut;
         while (!jour.isAfter(fin)) {
@@ -348,87 +344,85 @@ public BigDecimal calculerNombreJours(LocalDate debut, LocalDate fin, boolean jo
         return total;
     }
 
-
-
-// Génère un Excel des soldes. Si ids fourni -> seulement ces agents ; sinon tous.
-public byte[] genererExcelSoldes(List<Long> ids) throws Exception {
-    List<Agent> agents;
-    if (ids != null && !ids.isEmpty()) {
-        agents = agentRepository.findAllById(ids);
-    } else {
-        agents = agentRepository.findAll();
-    }
-
-    try (XSSFWorkbook workbook = new XSSFWorkbook();
-         ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-
-        Sheet sheet = workbook.createSheet("Soldes");
-
-        // Style en-tête
-        CellStyle headerStyle = workbook.createCellStyle();
-        Font headerFont = workbook.createFont();
-        headerFont.setBold(true);
-        headerFont.setColor(IndexedColors.WHITE.getIndex());
-        headerStyle.setFont(headerFont);
-        headerStyle.setFillForegroundColor(IndexedColors.DARK_GREEN.getIndex());
-        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        headerStyle.setAlignment(HorizontalAlignment.CENTER);
-
-        String[] entetes = {
-            "Matricule", "Nom", "Prénom", "Direction", "Division", "Statut",
-            "Congés acquis", "Reliquat", "Congés échus",
-            "Jours pris", "En cours", "Congés supplémentaires", "Jours sans solde",
-            "Dernier calcul"
-        };
-
-        Row ligneEntete = sheet.createRow(0);
-        for (int i = 0; i < entetes.length; i++) {
-            Cell cell = ligneEntete.createCell(i);
-            cell.setCellValue(entetes[i]);
-            cell.setCellStyle(headerStyle);
+    // Génère un Excel des soldes. Si ids fourni -> seulement ces agents ; sinon tous.
+    public byte[] genererExcelSoldes(List<Long> ids) throws Exception {
+        List<Agent> agents;
+        if (ids != null && !ids.isEmpty()) {
+            agents = agentRepository.findAllById(ids);
+        } else {
+            agents = agentRepository.findAll();
         }
 
-        int numLigne = 1;
-        for (Agent a : agents) {
-            Row row = sheet.createRow(numLigne++);
-            int c = 0;
+        try (XSSFWorkbook workbook = new XSSFWorkbook();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            row.createCell(c++).setCellValue(nzSolde(a.getMatricule()));
-            row.createCell(c++).setCellValue(nzSolde(a.getNom()));
-            row.createCell(c++).setCellValue(nzSolde(a.getPrenom()));
-            row.createCell(c++).setCellValue(a.getDirection() != null ? nzSolde(a.getDirection().getLibelle()) : "");
-            row.createCell(c++).setCellValue(a.getUnite() != null ? nzSolde(a.getUnite().getLibelle()) : "");
-            row.createCell(c++).setCellValue(nzSolde(a.getStatut()));
+            Sheet sheet = workbook.createSheet("Soldes");
 
-            SoldeConges s = soldeCongesRepository.findByAgentId(a.getId()).orElse(null);
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesAcquis() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesReliquat() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesEchus() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbJourPrisDeductible() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesEncours() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesSupplementaire() : null));
-            row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbJourSansSolde() : null));
-            row.createCell(c++).setCellValue(s != null && s.getDateDernierCalcul() != null ? s.getDateDernierCalcul().toString() : "");
+            // Style en-tête
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setColor(IndexedColors.WHITE.getIndex());
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.DARK_GREEN.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+
+            String[] entetes = {
+                "Matricule", "Nom", "Prénom", "Direction", "Division", "Statut",
+                "Congés acquis", "Reliquat", "Congés échus",
+                "Jours pris", "En cours", "Congés supplémentaires", "Jours sans solde",
+                "Dernier calcul"
+            };
+
+            Row ligneEntete = sheet.createRow(0);
+            for (int i = 0; i < entetes.length; i++) {
+                Cell cell = ligneEntete.createCell(i);
+                cell.setCellValue(entetes[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            int numLigne = 1;
+            for (Agent a : agents) {
+                Row row = sheet.createRow(numLigne++);
+                int c = 0;
+
+                row.createCell(c++).setCellValue(nzSolde(a.getMatricule()));
+                row.createCell(c++).setCellValue(nzSolde(a.getNom()));
+                row.createCell(c++).setCellValue(nzSolde(a.getPrenom()));
+                row.createCell(c++).setCellValue(a.getDirection() != null ? nzSolde(a.getDirection().getLibelle()) : "");
+                row.createCell(c++).setCellValue(a.getUnite() != null ? nzSolde(a.getUnite().getLibelle()) : "");
+                row.createCell(c++).setCellValue(nzSolde(a.getStatut()));
+
+                SoldeConges s = soldeCongesRepository.findByAgentId(a.getId()).orElse(null);
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesAcquis() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesReliquat() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesEchus() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbJourPrisDeductible() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesEncours() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbCongesSupplementaire() : null));
+                row.createCell(c++).setCellValue(valSolde(s != null ? s.getNbJourSansSolde() : null));
+                row.createCell(c++).setCellValue(s != null && s.getDateDernierCalcul() != null ? s.getDateDernierCalcul().toString() : "");
+            }
+
+            for (int i = 0; i < entetes.length; i++) sheet.autoSizeColumn(i);
+
+            workbook.write(out);
+            return out.toByteArray();
         }
-
-        for (int i = 0; i < entetes.length; i++) sheet.autoSizeColumn(i);
-
-        workbook.write(out);
-        return out.toByteArray();
     }
-}
 
-// Helpers (renommés pour éviter tout conflit avec ceux d'EmployeService)
-private String nzSolde(String s) { return s != null ? s : ""; }
-private double valSolde(java.math.BigDecimal b) { return b != null ? b.doubleValue() : 0; }
-
+    // Helpers (renommés pour éviter tout conflit avec ceux d'EmployeService)
+    private String nzSolde(String s) { return s != null ? s : ""; }
+    private double valSolde(java.math.BigDecimal b) { return b != null ? b.doubleValue() : 0; }
 
     // Calcule les congés supplémentaires (ancienneté + mères de famille)
-    public  BigDecimal calculerCongesSupplementaires(Agent agent) {
+    public BigDecimal calculerCongesSupplementaires(Agent agent) {
         BigDecimal total = BigDecimal.ZERO;
         LocalDate aujourdhui = LocalDate.now();
 
         // ===== RÈGLE 1 : ANCIENNETÉ (tous les agents, palier atteint seul) =====
+        // Convention : +1 à 10 ans, +2 à 15 ans, +3 à 20 ans, +7 à 25 ans.
         if (agent.getDateEmbauche() != null) {
             long annees = ChronoUnit.YEARS.between(agent.getDateEmbauche(), aujourdhui);
             if (annees >= 25) {
@@ -442,23 +436,33 @@ private double valSolde(java.math.BigDecimal b) { return b != null ? b.doubleVal
             }
         }
 
-        // ===== RÈGLES MÈRES : femmes uniquement, enfants de moins de 14 ans =====
+        // ===== RÈGLE 2 : MÈRES — femmes uniquement, enfants de moins de 14 ans =====
         boolean estFemme = agent.getSexe() != null && agent.getSexe().equalsIgnoreCase("F");
         if (estFemme && agent.getEnfants() != null && !agent.getEnfants().isEmpty()) {
 
-            // Compter les enfants de moins de 14 ans
+            // Enfants à charge = enfants de moins de 14 ans
             long nbEnfantsMoins14 = agent.getEnfants().stream()
                 .filter(e -> e.getDateNaissance() != null)
                 .filter(e -> ChronoUnit.YEARS.between(e.getDateNaissance(), aujourdhui) < 14)
                 .count();
 
-            // --- RÈGLE 2a : +1 jour par enfant de moins de 14 ans ---
+            // Base : +1 jour par enfant de moins de 14 ans (toutes les femmes)
             total = total.add(BigDecimal.valueOf(nbEnfantsMoins14));
 
-            // --- RÈGLE 2c : +2 jours par enfant à partir du 4ème (enfants < 14 ans) ---
-            if (nbEnfantsMoins14 >= 4) {
-                long enfantsAuDela3 = nbEnfantsMoins14 - 3;  // le 4ème et au-delà
-                total = total.add(BigDecimal.valueOf(enfantsAuDela3 * 2));
+            // Bonus Convention selon l'âge de la mère au jour du calcul
+            long ageMere = (agent.getDateNaissance() != null)
+                ? ChronoUnit.YEARS.between(agent.getDateNaissance(), aujourdhui)
+                : 999; // si la date de naissance est inconnue, on applique le régime ≥ 21 ans
+
+            if (ageMere < 21) {
+                // Mère de moins de 21 ans : +2 jours par enfant de moins de 14 ans (dès le 1er)
+                total = total.add(BigDecimal.valueOf(nbEnfantsMoins14 * 2));
+            } else {
+                // Mère de 21 ans et plus : +2 jours par enfant de moins de 14 ans, à partir du 4e
+                if (nbEnfantsMoins14 >= 4) {
+                    long enfantsAuDela3 = nbEnfantsMoins14 - 3;
+                    total = total.add(BigDecimal.valueOf(enfantsAuDela3 * 2));
+                }
             }
         }
 
@@ -466,162 +470,161 @@ private double valSolde(java.math.BigDecimal b) { return b != null ? b.doubleVal
     }
 
     @Transactional
-public ResultatImportRegul importerRegularisations(MultipartFile fichier, String effectuePar) throws Exception {
-    ResultatImportRegul resultat = new ResultatImportRegul();
-    DataFormatter fmt = new DataFormatter();
+    public ResultatImportRegul importerRegularisations(MultipartFile fichier, String effectuePar) throws Exception {
+        ResultatImportRegul resultat = new ResultatImportRegul();
+        DataFormatter fmt = new DataFormatter();
 
-    // Lignes valides préparées en passe 1
-    List<Object[]> valides = new ArrayList<>(); // [agent, dateDebut, dateFin, momentDebut, momentFin, nbJours]
+        // Lignes valides préparées en passe 1
+        List<Object[]> valides = new ArrayList<>(); // [agent, dateDebut, dateFin, momentDebut, momentFin, nbJours]
 
-    try (InputStream is = fichier.getInputStream();
-         Workbook wb = new XSSFWorkbook(is)) {
-        Sheet sheet = wb.getSheetAt(0);
+        try (InputStream is = fichier.getInputStream();
+             Workbook wb = new XSSFWorkbook(is)) {
+            Sheet sheet = wb.getSheetAt(0);
 
-        // En-têtes
-        Row entete = sheet.getRow(0);
-        Map<String, Integer> idx = new HashMap<>();
-        if (entete != null) {
-            for (int c = 0; c < entete.getLastCellNum(); c++) {
-                Cell cell = entete.getCell(c);
-                String nom = (cell == null) ? "" : fmt.formatCellValue(cell).trim().toLowerCase();
-                if (!nom.isEmpty()) idx.put(nom, c);
+            // En-têtes
+            Row entete = sheet.getRow(0);
+            Map<String, Integer> idx = new HashMap<>();
+            if (entete != null) {
+                for (int c = 0; c < entete.getLastCellNum(); c++) {
+                    Cell cell = entete.getCell(c);
+                    String nom = (cell == null) ? "" : fmt.formatCellValue(cell).trim().toLowerCase();
+                    if (!nom.isEmpty()) idx.put(nom, c);
+                }
+            }
+
+            // PASSE 1 : validation
+            for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                if (row == null) continue;
+
+                String matricule = lire(fmt, row, idx, "matricule");
+                String dDebut    = lire(fmt, row, idx, "datedebut");
+                String dFin      = lire(fmt, row, idx, "datefin");
+                String mDebut    = lire(fmt, row, idx, "momentdebut");
+                String mFin      = lire(fmt, row, idx, "momentfin");
+
+                if (matricule.isEmpty() && dDebut.isEmpty() && dFin.isEmpty()) continue;
+                resultat.totalLignes++;
+                int numLigne = i + 1;
+
+                try {
+                    if (matricule.isEmpty()) throw new RuntimeException("Matricule manquant");
+                    Agent agent = agentRepository.findByMatricule(matricule)
+                        .orElseThrow(() -> new RuntimeException("Employé introuvable : " + matricule));
+
+                    LocalDate dateDebut = parseDate(dDebut);
+                    LocalDate dateFin   = parseDate(dFin);
+                    if (dateDebut == null || dateFin == null)
+                        throw new RuntimeException("Dates invalides");
+                    if (dateFin.isBefore(dateDebut))
+                        throw new RuntimeException("Date de fin avant la date de début");
+
+                    String momentDebut = vide(mDebut) ? "JOURNEE" : mDebut.toUpperCase();
+                    String momentFin   = vide(mFin)   ? "JOURNEE" : mFin.toUpperCase();
+
+                    BigDecimal nbJours = calculerNombreJours(dateDebut, dateFin, true, momentDebut, momentFin);
+                    if (nbJours.compareTo(BigDecimal.ZERO) <= 0)
+                        throw new RuntimeException("Aucun jour ouvrable dans la période");
+
+                    valides.add(new Object[]{agent, dateDebut, dateFin, momentDebut, momentFin, nbJours});
+
+                } catch (Exception e) {
+                    resultat.erreurs++;
+                    resultat.messagesErreur.add("Ligne " + numLigne + " : " + e.getMessage());
+                }
             }
         }
 
-        // PASSE 1 : validation
-        for (int i = 1; i <= sheet.getLastRowNum(); i++) {
-            Row row = sheet.getRow(i);
-            if (row == null) continue;
-
-            String matricule = lire(fmt, row, idx, "matricule");
-            String dDebut    = lire(fmt, row, idx, "datedebut");
-            String dFin      = lire(fmt, row, idx, "datefin");
-            String mDebut    = lire(fmt, row, idx, "momentdebut");
-            String mFin      = lire(fmt, row, idx, "momentfin");
-
-            if (matricule.isEmpty() && dDebut.isEmpty() && dFin.isEmpty()) continue;
-            resultat.totalLignes++;
-            int numLigne = i + 1;
-
-            try {
-                if (matricule.isEmpty()) throw new RuntimeException("Matricule manquant");
-                Agent agent = agentRepository.findByMatricule(matricule)
-                    .orElseThrow(() -> new RuntimeException("Employé introuvable : " + matricule));
-
-                LocalDate dateDebut = parseDate(dDebut);
-                LocalDate dateFin   = parseDate(dFin);
-                if (dateDebut == null || dateFin == null)
-                    throw new RuntimeException("Dates invalides");
-                if (dateFin.isBefore(dateDebut))
-                    throw new RuntimeException("Date de fin avant la date de début");
-
-                String momentDebut = vide(mDebut) ? "JOURNEE" : mDebut.toUpperCase();
-                String momentFin   = vide(mFin)   ? "JOURNEE" : mFin.toUpperCase();
-
-                BigDecimal nbJours = calculerNombreJours(dateDebut, dateFin, true, momentDebut, momentFin);
-                if (nbJours.compareTo(BigDecimal.ZERO) <= 0)
-                    throw new RuntimeException("Aucun jour ouvrable dans la période");
-
-                valides.add(new Object[]{agent, dateDebut, dateFin, momentDebut, momentFin, nbJours});
-
-            } catch (Exception e) {
-                resultat.erreurs++;
-                resultat.messagesErreur.add("Ligne " + numLigne + " : " + e.getMessage());
-            }
+        // TOUT OU RIEN
+        if (resultat.erreurs > 0) {
+            resultat.crees = 0;
+            resultat.messagesErreur.add(0, "Import annulé : " + resultat.erreurs
+                + " erreur(s). Aucune régularisation enregistrée.");
+            return resultat;
         }
-    }
 
-    // TOUT OU RIEN
-    if (resultat.erreurs > 0) {
-        resultat.crees = 0;
-        resultat.messagesErreur.add(0, "Import annulé : " + resultat.erreurs
-            + " erreur(s). Aucune régularisation enregistrée.");
+        // PASSE 2 : création
+        for (Object[] v : valides) {
+            Agent agent = (Agent) v[0];
+            LocalDate dateDebut = (LocalDate) v[1];
+            LocalDate dateFin = (LocalDate) v[2];
+            String momentDebut = (String) v[3];
+            String momentFin = (String) v[4];
+            BigDecimal nbJours = (BigDecimal) v[5];
+
+            SoldeConges solde = soldeCongesRepository.findByAgentId(agent.getId())
+                .orElseGet(() -> { SoldeConges s = new SoldeConges(); s.setAgent(agent); return s; });
+            BigDecimal prisActuel = solde.getNbJourPrisDeductible() != null ? solde.getNbJourPrisDeductible() : BigDecimal.ZERO;
+            solde.setNbJourPrisDeductible(prisActuel.add(nbJours));
+            solde.setDateMaj(LocalDateTime.now());
+            soldeCongesRepository.save(solde);
+
+            Regularisation reg = new Regularisation();
+            reg.setAgent(agent);
+            reg.setDateDebut(dateDebut);
+            reg.setDateFin(dateFin);
+            reg.setMomentDebut(momentDebut);
+            reg.setMomentFin(momentFin);
+            reg.setNbJours(nbJours);
+            reg.setDateOperation(LocalDateTime.now());
+            reg.setEffectuePar(effectuePar);
+            regularisationRepository.save(reg);
+
+            recalculerSoldeAgent(agent);
+            resultat.crees++;
+        }
         return resultat;
     }
 
-    // PASSE 2 : création
-    for (Object[] v : valides) {
-        Agent agent = (Agent) v[0];
-        LocalDate dateDebut = (LocalDate) v[1];
-        LocalDate dateFin = (LocalDate) v[2];
-        String momentDebut = (String) v[3];
-        String momentFin = (String) v[4];
-        BigDecimal nbJours = (BigDecimal) v[5];
-
-        SoldeConges solde = soldeCongesRepository.findByAgentId(agent.getId())
-            .orElseGet(() -> { SoldeConges s = new SoldeConges(); s.setAgent(agent); return s; });
-        BigDecimal prisActuel = solde.getNbJourPrisDeductible() != null ? solde.getNbJourPrisDeductible() : BigDecimal.ZERO;
-        solde.setNbJourPrisDeductible(prisActuel.add(nbJours));
-        solde.setDateMaj(LocalDateTime.now());
-        soldeCongesRepository.save(solde);
-
-        Regularisation reg = new Regularisation();
-        reg.setAgent(agent);
-        reg.setDateDebut(dateDebut);
-        reg.setDateFin(dateFin);
-        reg.setMomentDebut(momentDebut);
-        reg.setMomentFin(momentFin);
-        reg.setNbJours(nbJours);
-        reg.setDateOperation(LocalDateTime.now());
-        reg.setEffectuePar(effectuePar);
-        regularisationRepository.save(reg);
-
-        recalculerSoldeAgent(agent);
-        resultat.crees++;
+    // Classe résultat
+    public static class ResultatImportRegul {
+        public int totalLignes = 0, crees = 0, erreurs = 0;
+        public List<String> messagesErreur = new ArrayList<>();
     }
-    return resultat;
-}
 
-// Classe résultat (peux la mettre en classe interne ou à part)
-public static class ResultatImportRegul {
-    public int totalLignes = 0, crees = 0, erreurs = 0;
-    public List<String> messagesErreur = new ArrayList<>();
-    // getters si besoin pour la sérialisation JSON (ou rends les champs publics suffit)
-}
-
-// Utilitaire de lecture de cellule par nom de colonne
-private String lire(DataFormatter fmt, Row row, Map<String,Integer> idx, String col) {
-    Integer i = idx.get(col);
-    if (i == null) return "";
-    Cell c = row.getCell(i);
-    return c == null ? "" : fmt.formatCellValue(c).trim();
-}
-private boolean vide(String s) { return s == null || s.trim().isEmpty(); }
-private LocalDate parseDate(String s) {
-    if (s == null || s.trim().isEmpty()) return null;
-    s = s.trim();
-    // Essaie plusieurs formats courants
-    String[] formats = {"dd/MM/yyyy", "yyyy-MM-dd", "d/M/yyyy", "dd-MM-yyyy"};
-    for (String f : formats) {
-        try {
-            return LocalDate.parse(s, java.time.format.DateTimeFormatter.ofPattern(f));
-        } catch (Exception ignored) {}
+    // Utilitaire de lecture de cellule par nom de colonne
+    private String lire(DataFormatter fmt, Row row, Map<String,Integer> idx, String col) {
+        Integer i = idx.get(col);
+        if (i == null) return "";
+        Cell c = row.getCell(i);
+        return c == null ? "" : fmt.formatCellValue(c).trim();
     }
-    return null;
-}
+    private boolean vide(String s) { return s == null || s.trim().isEmpty(); }
+    private LocalDate parseDate(String s) {
+        if (s == null || s.trim().isEmpty()) return null;
+        s = s.trim();
+        // Essaie plusieurs formats courants
+        String[] formats = {"dd/MM/yyyy", "yyyy-MM-dd", "d/M/yyyy", "dd-MM-yyyy"};
+        for (String f : formats) {
+            try {
+                return LocalDate.parse(s, java.time.format.DateTimeFormatter.ofPattern(f));
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
 
-@Transactional(readOnly = true)
-public List<RegularisationDTO> listerRegularisations() {
-    return regularisationRepository.findAllByOrderByDateOperationDesc()
-        .stream()
-        .map(reg -> {
-            RegularisationDTO dto = new RegularisationDTO();
-            dto.setId(reg.getId());
-            if (reg.getAgent() != null) {
-                dto.setMatricule(reg.getAgent().getMatricule());
-                dto.setNom(reg.getAgent().getNom());
-                dto.setPrenom(reg.getAgent().getPrenom());
-            }
-            dto.setDateDebut(reg.getDateDebut());
-            dto.setDateFin(reg.getDateFin());
-            dto.setMomentDebut(reg.getMomentDebut());
-            dto.setMomentFin(reg.getMomentFin());
-            dto.setNbJours(reg.getNbJours());
-            dto.setDateOperation(reg.getDateOperation());
-            dto.setEffectuePar(reg.getEffectuePar());
-            return dto;
-        })
-        .toList();
-}
+    @Transactional(readOnly = true)
+    public List<RegularisationDTO> listerRegularisations() {
+        return regularisationRepository.findAllByOrderByDateOperationDesc()
+            .stream()
+            .map(reg -> {
+                RegularisationDTO dto = new RegularisationDTO();
+                dto.setId(reg.getId());
+                if (reg.getAgent() != null) {
+                    dto.setMatricule(reg.getAgent().getMatricule());
+                    dto.setNom(reg.getAgent().getNom());
+                    dto.setPrenom(reg.getAgent().getPrenom());
+                }
+                dto.setDateDebut(reg.getDateDebut());
+                dto.setDateFin(reg.getDateFin());
+                dto.setMomentDebut(reg.getMomentDebut());
+                dto.setMomentFin(reg.getMomentFin());
+                dto.setNbJours(reg.getNbJours());
+                dto.setDateOperation(reg.getDateOperation());
+                dto.setEffectuePar(reg.getEffectuePar());
+                return dto;
+            })
+            .toList();
+    }
 
 }

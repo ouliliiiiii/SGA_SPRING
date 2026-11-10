@@ -35,3 +35,13 @@ databaseChangeLog:
       file: db/changelog/changes/017-add-token-actif-utilisateur.yaml
   - include:
       file: db/changelog/changes/018-create-table-regularisation.yaml
+  - include:
+      file: db/changelog/changes/019-add-est-admin-utilisateur.yaml
+  - include:
+      file: db/changelog/changes/020-insert-profil-superadmin.yaml
+  - include:
+      file: db/changelog/changes/021-migration-est-admin.yaml
+  - include:
+      file: db/changelog/changes/022-create-superadmin.yaml
+  - include:
+      file: db/changelog/changes/023-create-table-journal-activite.yaml

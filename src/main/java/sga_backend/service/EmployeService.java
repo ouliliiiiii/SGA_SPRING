@@ -62,6 +62,8 @@ public class EmployeService {
     @Autowired private PosteRepository posteRepository;
     @Autowired private EmailService emailService;
     @Autowired private SoldeCongesService soldeCongesService;
+    @Autowired
+    private JournalService journalService;
 
     @Value("${sga.app.url:http://localhost:4200}")
     private String appUrl;
@@ -203,6 +205,12 @@ public class EmployeService {
 
         // ---- ÉTAPE 6 : Email ----
         envoyerEmailBienvenue(request.getEmail(), request.getNom(), request.getPrenom(), motDePasseGenere);
+                journalService.enregistrer(
+                "CREATION_EMPLOYE",
+                "Création d'un employé",
+                request.getPrenom() + " " + request.getNom(),
+                null
+        );
 
         return utilisateurSauvegarde;
     }

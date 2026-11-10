@@ -59,6 +59,8 @@ public class DemandeCongeService {
     @Autowired private UniteRepository uniteRepository;
     @Autowired private NotificationService notificationService;
     @Autowired private EmailService emailService;
+    @Autowired
+    private JournalService journalService;
     
 
     @Transactional
@@ -128,10 +130,11 @@ public DemandeCongeDTO creerDemande(CreerDemandeRequest request) {
             throw new RuntimeException("La période sélectionnée ne contient aucun jour décompté");
         }
 
-        // Règle : pour un congé DEDUCTIBLE, les congés échus (qui incluent DÉJÀ le
-        // supplément — vision A) doivent couvrir la durée demandée.
-        if ("DEDUCTIBLE".equalsIgnoreCase(type.getCategorie())) {
-            // Congés échus projetés à la DATE DE DÉBUT (supplément déjà inclus dedans)
+// Règle : pour un congé DEDUCTIBLE, on ne peut puiser QUE dans les congés échus
+        // (droits des années passées, plafonnés à 3 ans). Les congés en cours ne sont
+        // pas encore prenables.
+          if ("DEDUCTIBLE".equalsIgnoreCase(type.getCategorie())) {
+            // Congés échus projetés à la DATE DE DÉBUT de la demande
             BigDecimal disponible = soldeCongesService.calculerEchusALaDate(agent, request.getDateDebut());
 
             if (disponible.compareTo(BigDecimal.ZERO) <= 0) {
@@ -175,6 +178,15 @@ public DemandeCongeDTO creerDemande(CreerDemandeRequest request) {
 
         // Notifier le premier validateur (première étape EN_ATTENTE)
         notifierPremierValidateur(sauvegardee);
+
+        // >>> JOURNAL : création d'une demande
+        journalService.enregistrer(
+            "CREATION_DEMANDE",
+            "Création d'une demande de congé",
+            "Demande de " + agent.getPrenom() + " " + agent.getNom(),
+            type.getLibelle() + " — " + nbJours + " j (du " + demande.getDateDebut()
+                + " au " + demande.getDateFin() + ")"
+        );
 
         return toDto(sauvegardee);
     }

@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 022-create-superadmin
+      author: mme niane
+      changes:
+        # Compte SUPERADMIN purement technique : pas d'agent metier (id_agent NULL).
+        # Il ne gere QUE l'attribution des roles, rien du metier.
+        # Login    : superadmin@sencsu.sn
+        # Mot de passe initial : Superadmin2026 (a changer a la 1ere connexion)
+        - insert:
+            tableName: utilisateur
+            columns:
+              - column: { name: nom, value: "Super" }
+              - column: { name: prenom, value: "Admin" }
+              - column: { name: login, value: "superadmin@sencsu.sn" }
+              - column: { name: mot_de_passe, value: "$2a$10$pGOjEmEhKkGlH4NgzMiRBOpL4n5ASyUdAatP6BhQJndRh0JsV3PFe" }
+              - column: { name: statut, value: "VALIDE" }
+              - column: { name: est_admin, valueBoolean: false }
+              - column: { name: id_profil, valueNumeric: 13 }

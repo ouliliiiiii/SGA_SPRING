@@ -1,0 +1,11 @@
+databaseChangeLog:
+  - changeSet:
+      id: 021-migration-est-admin
+      author: mme niane
+      changes:
+        # Les utilisateurs ayant actuellement le profil ADMIN gardent les droits
+        # d'administration via le nouveau booleen est_admin.
+        - sql:
+            sql: >
+              UPDATE utilisateur SET est_admin = true
+              WHERE id_profil = (SELECT id FROM profil WHERE code = 'ADMIN')

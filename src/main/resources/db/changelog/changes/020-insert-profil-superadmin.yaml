@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 020-insert-profil-superadmin
+      author: mme niane
+      changes:
+        - insert:
+            tableName: profil
+            columns:
+              - column: { name: id, valueNumeric: 13 }
+              - column: { name: code, value: SUPERADMIN }
+              - column: { name: libelle, value: "Super Administrateur" }
+              - column: { name: description, value: "Gestion des roles uniquement (aucun role metier)" }
+              - column: { name: niveau, valueNumeric: 120 }
